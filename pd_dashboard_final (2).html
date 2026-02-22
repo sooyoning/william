@@ -1,0 +1,3709 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Primary Dealer Net Position Monitor</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg: #060911;
+    --bg2: #0d1320;
+    --bg3: #111827;
+    --border: #1e2d45;
+    --border2: #243550;
+    --text: #c8d6e5;
+    --text2: #7a9bb5;
+    --text3: #4a6580;
+    --gold: #e8a020;
+    --gold2: #f5c842;
+    --green: #1fa869;
+    --green2: #26d68a;
+    --yellow: #d4a017;
+    --yellow2: #f0c030;
+    --red: #c03030;
+    --red2: #f04040;
+    --blue: #1a6aaa;
+    --blue2: #3090e0;
+    --teal: #1a8899;
+    --teal2: #30b8cc;
+    --purple: #7040cc;
+    --purple2: #9060ee;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 15px;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* HEADER */
+  .header {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border2);
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .header-left { display: flex; align-items: center; gap: 16px; }
+  .header-logo {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--gold);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    border: 1px solid var(--gold);
+    padding: 3px 8px;
+  }
+  .header-title {
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--text);
+    letter-spacing: 0.5px;
+  }
+  .header-subtitle {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--text3);
+    margin-top: 2px;
+  }
+  .header-right { display: flex; align-items: center; gap: 12px; }
+  
+  #lastUpdate {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--text3);
+  }
+
+  /* UPLOAD AREA */
+  .upload-zone {
+    border: 1.5px dashed var(--border2);
+    border-radius: 4px;
+    padding: 6px 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text2);
+    transition: all 0.2s;
+    background: var(--bg3);
+  }
+  .upload-zone:hover { border-color: var(--gold); color: var(--gold); }
+  .upload-zone.drag-over { border-color: var(--gold2); background: rgba(232,160,32,0.05); }
+  .upload-icon { font-size: 14px; }
+  #fileInput { display: none; }
+
+  /* File status pills */
+  .file-status-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .file-pill {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 10px;
+    letter-spacing: 0.5px;
+    border: 1px solid;
+    transition: all 0.3s;
+  }
+  .file-pill.loaded {
+    background: rgba(38,214,138,0.1);
+    color: var(--green2);
+    border-color: rgba(38,214,138,0.3);
+  }
+  .file-pill.pending {
+    background: rgba(74,101,128,0.1);
+    color: var(--text3);
+    border-color: var(--border);
+  }
+  .file-pill.loading {
+    background: rgba(232,160,32,0.1);
+    color: var(--gold);
+    border-color: rgba(232,160,32,0.3);
+    animation: blink 0.8s infinite;
+  }
+
+  /* MAIN LAYOUT */
+  .main { padding: 20px 24px; }
+
+  /* TIME RANGE */
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+  .controls-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .range-btns { display: flex; gap: 4px; }
+  .range-btn {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    padding: 5px 12px;
+    border: 1px solid var(--border2);
+    background: var(--bg3);
+    color: var(--text2);
+    cursor: pointer;
+    border-radius: 2px;
+    transition: all 0.15s;
+    letter-spacing: 0.5px;
+  }
+  .range-btn:hover { border-color: var(--gold); color: var(--gold); }
+  .range-btn.active { background: var(--gold); color: var(--bg); border-color: var(--gold); font-weight: 600; }
+
+  /* TABS */
+  .tab-nav {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 20px;
+    gap: 0;
+  }
+  .tab-btn {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    padding: 10px 20px;
+    border: none;
+    background: none;
+    color: var(--text3);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: all 0.15s;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .tab-btn:hover { color: var(--text2); }
+  .tab-btn.active { color: var(--gold); border-bottom-color: var(--gold); }
+
+  /* PANEL */
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* METRICS ROW */
+  .metrics-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .metric-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 14px 16px;
+    position: relative;
+    overflow: hidden;
+  }
+  .metric-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+  .metric-card.gold::before { background: var(--gold); }
+  .metric-card.green::before { background: var(--green2); }
+  .metric-card.yellow::before { background: var(--yellow2); }
+  .metric-card.red::before { background: var(--red2); }
+  .metric-card.blue::before { background: var(--blue2); }
+  .metric-card.teal::before { background: var(--teal2); }
+  .metric-card.purple::before { background: var(--purple2); }
+
+  .metric-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 8px;
+  }
+  .metric-value {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1;
+  }
+  .metric-value.pos { color: var(--green2); }
+  .metric-value.neg { color: var(--red2); }
+  .metric-sub {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text3);
+    margin-top: 4px;
+  }
+
+  /* STATUS BADGE */
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 2px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+  .status-badge::before {
+    content: '';
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+  .status-badge.normal {
+    background: rgba(26,168,105,0.12);
+    color: var(--green2);
+    border: 1px solid rgba(38,214,138,0.2);
+  }
+  .status-badge.normal::before { background: var(--green2); }
+  .status-badge.caution {
+    background: rgba(212,160,23,0.12);
+    color: var(--yellow2);
+    border: 1px solid rgba(240,192,48,0.2);
+  }
+  .status-badge.caution::before { background: var(--yellow2); }
+  .status-badge.danger {
+    background: rgba(192,48,48,0.15);
+    color: var(--red2);
+    border: 1px solid rgba(240,64,64,0.25);
+  }
+  .status-badge.danger::before { background: var(--red2); }
+
+  /* CHARTS GRID */
+  .charts-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .chart-full { grid-column: 1 / -1; }
+  .chart-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 16px;
+  }
+  .chart-title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 12px;
+  }
+  .chart-wrap {
+    position: relative;
+    height: 220px;
+  }
+  .chart-wrap.tall { height: 280px; }
+
+  /* STATUS BAR */
+  .status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .status-info {
+    font-size: 13px;
+    color: var(--text2);
+  }
+  .status-info span { color: var(--text); font-weight: 500; }
+
+  /* NO DATA */
+  .no-data {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 400px;
+    color: var(--text3);
+    gap: 12px;
+  }
+  .no-data-icon { font-size: 40px; opacity: 0.4; }
+  .no-data-text {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 14px;
+    letter-spacing: 1px;
+  }
+  .no-data-sub { font-size: 13px; color: var(--text3); max-width: 300px; text-align: center; line-height: 1.6; }
+
+  /* LEGEND */
+  .chart-legend {
+    display: flex;
+    gap: 16px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text3);
+  }
+  .legend-dot { width: 8px; height: 3px; border-radius: 2px; }
+
+  /* FORMULA BOX */
+  .formula-box {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--gold);
+    border-radius: 0 4px 4px 0;
+    padding: 12px 16px;
+    margin-bottom: 20px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  .formula-item { }
+  .formula-name {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px;
+    color: var(--gold);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+  .formula-desc {
+    font-size: 11px;
+    color: var(--text2);
+    line-height: 1.5;
+  }
+
+  /* SCROLLBAR */
+
+  /* CRITERIA BOX — per-tab judgment reference */
+  .criteria-box {
+    display: grid;
+    gap: 0;
+    margin-bottom: 18px;
+    border: 1px solid var(--border2);
+    border-left: 3px solid var(--gold);
+    border-radius: 0 4px 4px 0;
+    overflow: hidden;
+  }
+  .criteria-header {
+    background: rgba(232,160,32,0.06);
+    padding: 8px 16px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    color: var(--gold);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    border-bottom: 1px solid var(--border);
+  }
+  .criteria-grid {
+    display: grid;
+    padding: 12px 16px;
+    gap: 8px 24px;
+    background: var(--bg2);
+  }
+  .criteria-grid.cols3 { grid-template-columns: repeat(3, 1fr); }
+  .criteria-grid.cols4 { grid-template-columns: repeat(4, 1fr); }
+  .criteria-grid.cols2 { grid-template-columns: repeat(2, 1fr); }
+  .criteria-item { }
+  .criteria-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 3px;
+  }
+  .criteria-rule {
+    font-size: 13px;
+    color: var(--text2);
+    line-height: 1.55;
+  }
+  .criteria-rule .r-normal { color: var(--green2); font-weight: 600; }
+  .criteria-rule .r-caution { color: var(--yellow2); font-weight: 600; }
+  .criteria-rule .r-danger { color: var(--red2); font-weight: 600; }
+
+  /* CHART HEADER — subtitle under chart-title */
+  .chart-subtitle {
+    font-size: 12px;
+    color: var(--text3);
+    margin-top: -6px;
+    margin-bottom: 10px;
+    line-height: 1.5;
+    padding-left: 1px;
+  }
+
+
+
+  /* ── FRED API PANEL ─────────────────────────────────────────── */
+  .fred-panel {
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+  }
+  .fred-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .fred-panel-title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--gold);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+  }
+  .fred-panel-toggle {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text3);
+    cursor: pointer;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 3px 10px;
+    transition: all 0.2s;
+  }
+  .fred-panel-toggle:hover { color: var(--text); border-color: var(--border2); }
+  .fred-input-row {
+    display: flex;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .fred-key-input {
+    flex: 1;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: 4px;
+    padding: 9px 14px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.2s;
+    letter-spacing: 0.5px;
+  }
+  .fred-key-input::placeholder { color: var(--text3); }
+  .fred-key-input:focus { border-color: var(--gold); }
+  .fred-fetch-btn {
+    background: rgba(232,160,32,0.12);
+    border: 1px solid rgba(232,160,32,0.35);
+    border-radius: 4px;
+    padding: 9px 22px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    color: var(--gold);
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .fred-fetch-btn:hover { background: rgba(232,160,32,0.22); border-color: var(--gold); }
+  .fred-fetch-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .fred-save-btn {
+    background: transparent;
+    border: 1px solid var(--border2);
+    border-radius: 4px;
+    padding: 9px 14px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--text3);
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .fred-save-btn:hover { color: var(--text2); border-color: var(--border2); }
+  .fred-clear-btn {
+    background: transparent;
+    border: 1px solid var(--red);
+    border-radius: 4px;
+    padding: 9px 14px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--red2);
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .fred-clear-btn:hover { background: rgba(192,48,48,0.15); border-color: var(--red2); }
+  .fred-status-row {
+    margin-top: 12px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .fred-series-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    padding: 4px 12px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    color: var(--text3);
+    background: var(--bg3);
+    transition: all 0.3s;
+  }
+  .fred-series-pill.fetching {
+    color: var(--gold);
+    border-color: rgba(232,160,32,0.4);
+    background: rgba(232,160,32,0.06);
+    animation: blink 0.8s infinite;
+  }
+  .fred-series-pill.ok {
+    color: var(--green2);
+    border-color: rgba(38,214,138,0.35);
+    background: rgba(38,214,138,0.06);
+  }
+  .fred-series-pill.err {
+    color: var(--red2);
+    border-color: rgba(220,60,60,0.35);
+    background: rgba(220,60,60,0.06);
+  }
+  .fred-error-msg {
+    margin-top: 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--red2);
+    line-height: 1.6;
+    background: rgba(220,60,60,0.05);
+    border: 1px solid rgba(220,60,60,0.2);
+    border-radius: 3px;
+    padding: 8px 12px;
+    display: none;
+  }
+  .fred-info-msg {
+    margin-top: 8px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text3);
+    line-height: 1.6;
+  }
+  .fred-link {
+    color: var(--gold);
+    text-decoration: none;
+    border-bottom: 1px solid rgba(232,160,32,0.3);
+  }
+  .fred-link:hover { color: var(--text); }
+
+  /* ── HISTORICAL DIAGNOSIS ─────────────────────────── */
+  .hist-diagnosis {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    margin-bottom: 18px;
+    overflow: hidden;
+  }
+  .hist-diag-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: rgba(232,160,32,0.04);
+    border-bottom: 1px solid var(--border);
+  }
+  .hist-diag-title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--gold);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+  }
+  .hist-diag-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+  }
+  .hist-diag-left {
+    padding: 14px 16px;
+    border-right: 1px solid var(--border);
+  }
+  .hist-diag-right {
+    padding: 14px 16px;
+  }
+  /* Percentile bar */
+  .pct-bar-wrap {
+    margin-bottom: 12px;
+  }
+  .pct-bar-label {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+  .pct-bar-name {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text2);
+  }
+  .pct-bar-val {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .pct-bar-track {
+    background: var(--bg3);
+    border-radius: 2px;
+    height: 8px;
+    position: relative;
+    overflow: hidden;
+  }
+  .pct-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.6s ease;
+  }
+  .pct-bar-marker {
+    position: absolute;
+    top: -2px;
+    width: 2px;
+    height: 12px;
+    background: rgba(200,214,229,0.4);
+    border-radius: 1px;
+  }
+  /* Hist stats table */
+  .hist-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+  }
+  .hist-table th {
+    color: var(--text3);
+    font-weight: 400;
+    text-align: right;
+    padding: 3px 8px 3px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .hist-table th:first-child { text-align: left; }
+  .hist-table td {
+    color: var(--text);
+    text-align: right;
+    padding: 4px 8px 4px 0;
+    border-bottom: 1px solid rgba(30,45,69,0.3);
+    font-size: 11px;
+  }
+  .hist-table td:first-child { text-align: left; color: var(--text2); }
+  .hist-table tr.current-row td { color: var(--gold); font-weight: 600; }
+
+  /* Stage diagnosis banner */
+  .stage-banner {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 18px;
+  }
+  .stage-item {
+    padding: 12px 14px;
+    border-right: 1px solid var(--border);
+    opacity: 0.35;
+    transition: opacity 0.3s, background 0.3s;
+    position: relative;
+  }
+  .stage-item:last-child { border-right: none; }
+  .stage-item.active {
+    opacity: 1;
+  }
+  .stage-item.active::after {
+    content: '◀ 현재';
+    position: absolute;
+    bottom: 8px;
+    right: 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--gold);
+    letter-spacing: 0.5px;
+  }
+  .stage-num {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--text3);
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+  .stage-name {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .stage-desc {
+    font-size: 11px;
+    color: var(--text3);
+    line-height: 1.5;
+  }
+  .stage-pct {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    margin-top: 8px;
+  }
+
+  /* Radar chart container */
+  .radar-wrap {
+    position: relative;
+    height: 320px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  /* Loading state */
+  .loading {
+    text-align: center;
+    padding: 60px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    color: var(--text3);
+    letter-spacing: 2px;
+    animation: blink 1s infinite;
+  }
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  /* ── LOCK OVERLAY ───────────────────────────────────────────── */
+  #lockOverlay {
+    position: fixed;
+    inset: 0;
+    background: #060911;
+    z-index: 99999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'IBM Plex Mono', monospace;
+    transition: opacity 0.4s ease;
+  }
+  #lockOverlay.fade-out { opacity: 0; pointer-events: none; }
+  .lock-wrap {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .lock-logo-tag {
+    font-size: 11px;
+    color: #e8a020;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    border: 1px solid #e8a020;
+    padding: 4px 12px;
+    margin-bottom: 28px;
+    display: inline-block;
+  }
+  .lock-icon { font-size: 38px; margin-bottom: 18px; }
+  .lock-title {
+    font-size: 14px;
+    color: #9ab8d0;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .lock-sub {
+    font-size: 11px;
+    color: #6b8faa;
+    letter-spacing: 1px;
+    margin-bottom: 28px;
+  }
+  .lock-box {
+    background: #0d1320;
+    border: 1px solid #1e2d45;
+    border-radius: 6px;
+    padding: 28px 32px;
+    width: 320px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+  }
+  .lock-input-wrap {
+    position: relative;
+    margin-bottom: 14px;
+  }
+  .lock-input {
+    width: 100%;
+    background: #111827;
+    border: 1px solid #243550;
+    border-radius: 4px;
+    padding: 11px 44px 11px 14px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 15px;
+    color: #c8d6e5;
+    outline: none;
+    letter-spacing: 3px;
+    transition: border-color 0.2s;
+    text-align: center;
+    box-sizing: border-box;
+  }
+  .lock-input:focus { border-color: #e8a020; }
+  .lock-input.pw-error { border-color: #f04040; animation: lockShake 0.35s; }
+  .lock-toggle-pw {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: #6b8faa;
+    cursor: pointer;
+    font-size: 15px;
+    padding: 2px;
+    line-height: 1;
+  }
+  .lock-toggle-pw:hover { color: #9ab8d0; }
+  .lock-btn {
+    width: 100%;
+    background: rgba(232,160,32,0.12);
+    border: 1px solid rgba(232,160,32,0.4);
+    border-radius: 4px;
+    padding: 11px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    color: #e8a020;
+    cursor: pointer;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    transition: all 0.2s;
+  }
+  .lock-btn:hover { background: rgba(232,160,32,0.22); border-color: #e8a020; }
+  .lock-err {
+    margin-top: 12px;
+    font-size: 12px;
+    color: #f04040;
+    letter-spacing: 1px;
+    min-height: 18px;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .lock-err.show { opacity: 1; }
+  .lock-creator {
+    margin-top: 24px;
+    font-size: 11px;
+    color: #4a6580;
+    letter-spacing: 1.5px;
+  }
+  .lock-creator span { color: #7a9bb5; }
+  @keyframes lockShake {
+    0%,100% { transform: translateX(0); }
+    20%,60%  { transform: translateX(-6px); }
+    40%,80%  { transform: translateX(6px); }
+  }
+
+</style>
+</head>
+<body>
+
+<div id="lockOverlay">
+  <div class="lock-wrap">
+    <div class="lock-logo-tag">PD Monitor</div>
+    <div class="lock-icon">🔐</div>
+    <div class="lock-title">접근 제한</div>
+    <div class="lock-sub">Primary Dealer Net Position Monitor</div>
+    <div class="lock-box">
+      <div class="lock-input-wrap">
+        <input class="lock-input" type="password" id="lockPwInput" placeholder="암호를 입력하세요" autocomplete="off" />
+        <button class="lock-toggle-pw" id="lockTogglePw" tabindex="-1">👁</button>
+      </div>
+      <button class="lock-btn" id="lockUnlockBtn">UNLOCK</button>
+      <div class="lock-err" id="lockErrMsg">❌ 암호가 올바르지 않습니다</div>
+    </div>
+    <div class="lock-creator">제작 <span>@figvermouth</span></div>
+  </div>
+</div>
+
+
+<div class="header">
+  <div class="header-left">
+    <div class="header-logo">NY FED</div>
+    <div>
+      <div class="header-title">Primary Dealer Net Position Monitor</div>
+      <div class="header-subtitle">NET POSITION IN TREASURIES — TREND & VOLATILITY ANALYSIS</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="file-status-row" id="fileStatusRow">
+      <div class="file-pill pending" id="pill-status">데이터 없음</div>
+    </div>
+    <div id="lastUpdate"></div>
+    <div class="upload-zone" id="uploadZone">
+      <span class="upload-icon">⬆</span>
+      <span>CSV 업로드 (다중 선택 가능)</span>
+    </div>
+    <input type="file" id="fileInput" accept=".csv" multiple>
+  </div>
+</div>
+
+<div class="main">
+  <!-- Global legend: shown only for NP tabs via JS, hidden for others -->
+  <div id="global-criteria" class="criteria-box">
+    <div class="criteria-header">📌 Net Position 판단 기준 — TOTAL / T-BILLS / COUPONS / FRN / TIPS 탭 공통</div>
+    <div class="criteria-grid cols3">
+      <div class="criteria-item">
+        <div class="criteria-label">① 4-Week MA &nbsp;②  ΔNP₃ₘ (13w) &nbsp;③ Δ²NP 가속도</div>
+        <div class="criteria-rule">노이즈 제거 → 3개월 변화율 음수 전환 여부 → 감소 속도 가속 여부 순서로 판단</div>
+      </div>
+      <div class="criteria-item">
+        <div class="criteria-label">④ 8-Week Rolling STD &nbsp;&nbsp;⑤ CV%</div>
+        <div class="criteria-rule">주간 변화량 표준편차 (절대값) · STD/|4WMA|×100 (상대 변동성). CV% 급등은 포지션 축소 중 충격 증폭 신호.</div>
+      </div>
+      <div class="criteria-item">
+        <div class="criteria-label">경고 체계</div>
+        <div class="criteria-rule">
+          <span class="r-normal">🟢 정상</span>: ΔNP₃ₘ ≥ 0<br>
+          <span class="r-caution">🟡 경계</span>: ΔNP₃ₘ &lt; 0<br>
+          <span class="r-danger">🔴 위험</span>: ΔNP₃ₘ &lt; 0 &amp; Δ²NP &lt; 0
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- FRED API Panel -->
+  <div class="fred-panel" id="fredPanel">
+    <div class="fred-panel-header">
+      <span class="fred-panel-title">🔗 FRED API 자동 로드 — DGS10 · WRESBAL · WTREGEN</span>
+      <button class="fred-panel-toggle" id="fredPanelToggle" onclick="toggleFredPanel()">숨기기</button>
+    </div>
+    <div id="fredPanelBody">
+      <div class="fred-input-row">
+        <input class="fred-key-input" id="fredApiKey" type="password"
+          placeholder="FRED API Key 입력 (무료: fred.stlouisfed.org/docs/api/api_key.html)"
+          autocomplete="off">
+        <button class="fred-clear-btn" onclick="clearFredKey()" title="입력한 API 키 초기화">🗑 초기화</button>
+        <button class="fred-fetch-btn" id="fredFetchBtn" onclick="fetchAllFred()">⬇ FRED 로드</button>
+      </div>
+      <div class="fred-error-msg" id="fredErrorMsg"></div>
+      <div class="fred-status-row" id="fredStatusRow">
+        <span class="fred-series-pill" id="pill-dgs10">DGS10</span>
+        <span class="fred-series-pill" id="pill-wresbal">WRESBAL</span>
+        <span class="fred-series-pill" id="pill-wtregen">WTREGEN</span>
+      </div>
+      <div class="fred-info-msg">
+        ⓘ API 키는 <a class="fred-link" href="https://fred.stlouisfed.org/docs/api/api_key.html" target="_blank">fred.stlouisfed.org</a>에서 무료 발급.
+        브라우저 CORS 제한 시 프록시 3단계 자동 시도.
+        API 실패 시 아래 CSV 업로드를 사용하세요.
+      </div>
+    </div>
+  </div>
+
+  <!-- Time Range Controls -->
+  <div class="controls">
+    <span class="controls-label">기간</span>
+    <div class="range-btns">
+      <button class="range-btn" data-range="52">1년</button>
+      <button class="range-btn active" data-range="104">2년</button>
+      <button class="range-btn" data-range="260">5년</button>
+      <button class="range-btn" data-range="9999">전체</button>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tab-nav">
+    <button class="tab-btn active" data-tab="total">▸ TOTAL</button>
+    <button class="tab-btn" data-tab="bills">T-BILLS</button>
+    <button class="tab-btn" data-tab="coupons">COUPONS</button>
+    <button class="tab-btn" data-tab="frn">FRN</button>
+    <button class="tab-btn" data-tab="tips">TIPS</button>
+    <button class="tab-btn" data-tab="repo">⚠ REPO 의존도</button>
+    <button class="tab-btn" data-tab="bondvol">국채 변동성</button>
+    <button class="tab-btn" data-tab="liquidity">TGA & 유동성</button>
+    <button class="tab-btn" data-tab="composite">🔴 복합 경고</button>
+  </div>
+
+  <!-- No Data State -->
+  <div id="noDataState">
+    <div class="no-data">
+      <div class="no-data-icon">📂</div>
+      <div class="no-data-text">NO DATA LOADED</div>
+      <div class="no-data-sub">우측 상단의 "CSV 업데이트" 버튼을 클릭하거나 CSV 파일을 드래그하여 NY Fed Primary Dealer Statistics 데이터를 업로드하세요.</div>
+    </div>
+  </div>
+
+  <!-- Dashboard Content -->
+  <div id="dashContent" style="display:none;">
+    <!-- TOTAL TAB -->
+    <div class="tab-panel active" id="panel-total">
+      <div class="status-bar">
+        <div id="badge-total" class="status-badge">—</div>
+        <div class="status-info" id="info-total"></div>
+      </div>
+      <div class="metrics-row" id="metrics-total"></div>
+      <div class="hist-diagnosis" id="hist-total"></div>
+      <div class="charts-grid">
+        <div class="chart-card chart-full">
+          <div class="chart-title">순포지션 (Net Position) + 4주 이동평균</div>
+          <div class="chart-subtitle">Primary Dealer의 국채 보유 총량 추이. 감소 추세 = 위험 흡수 의지 약화</div>
+          <div class="chart-wrap tall"><canvas id="chart-total-pos"></canvas></div>
+          <div class="chart-legend">
+            <div class="legend-item"><div class="legend-dot" style="background:#e8a020"></div>Net Position</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#3090e0"></div>4W MA</div>
+          </div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">3개월 변화율 (ΔNP₃ₘ) & 가속도 (Δ²NP)</div>
+          <div class="chart-subtitle">막대: 13주 전 대비 변화량 (녹색=증가 / 빨강=감소). 선: 감소 속도 가속 여부</div>
+          <div class="chart-wrap"><canvas id="chart-total-delta"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">변동성 — 8주 Rolling STD & Normalized Vol (CV%)</div>
+          <div class="chart-subtitle">절대 변동성(좌축)과 포지션 대비 상대 변동성 CV%(우축). CV% 급등 = 소규모 매도에도 큰 충격</div>
+          <div class="chart-wrap"><canvas id="chart-total-vol"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BILLS TAB -->
+    <div class="tab-panel" id="panel-bills">
+      <div class="status-bar">
+        <div id="badge-bills" class="status-badge">—</div>
+        <div class="status-info" id="info-bills"></div>
+      </div>
+      <div class="metrics-row" id="metrics-bills"></div>
+      <div class="hist-diagnosis" id="hist-bills"></div>
+      <div class="charts-grid">
+        <div class="chart-card chart-full">
+          <div class="chart-title">T-Bills 순포지션 + 4주 이동평균</div>
+          <div class="chart-wrap tall"><canvas id="chart-bills-pos"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">3개월 변화율 & 가속도</div>
+          <div class="chart-wrap"><canvas id="chart-bills-delta"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">변동성 — 8주 Rolling STD & CV%</div>
+          <div class="chart-wrap"><canvas id="chart-bills-vol"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- COUPONS TAB -->
+    <div class="tab-panel" id="panel-coupons">
+      <div class="status-bar">
+        <div id="badge-coupons" class="status-badge">—</div>
+        <div class="status-info" id="info-coupons"></div>
+      </div>
+      <div class="metrics-row" id="metrics-coupons"></div>
+      <div class="hist-diagnosis" id="hist-coupons"></div>
+      <div class="charts-grid">
+        <div class="chart-card chart-full">
+          <div class="chart-title">Coupons 순포지션 + 4주 이동평균</div>
+          <div class="chart-wrap tall"><canvas id="chart-coupons-pos"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">3개월 변화율 & 가속도</div>
+          <div class="chart-wrap"><canvas id="chart-coupons-delta"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">변동성 — 8주 Rolling STD & CV%</div>
+          <div class="chart-wrap"><canvas id="chart-coupons-vol"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FRN TAB -->
+    <div class="tab-panel" id="panel-frn">
+      <div class="status-bar">
+        <div id="badge-frn" class="status-badge">—</div>
+        <div class="status-info" id="info-frn"></div>
+      </div>
+      <div class="metrics-row" id="metrics-frn"></div>
+      <div class="hist-diagnosis" id="hist-frn"></div>
+      <div class="charts-grid">
+        <div class="chart-card chart-full">
+          <div class="chart-title">FRN 순포지션 + 4주 이동평균</div>
+          <div class="chart-wrap tall"><canvas id="chart-frn-pos"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">3개월 변화율 & 가속도</div>
+          <div class="chart-wrap"><canvas id="chart-frn-delta"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">변동성 — 8주 Rolling STD & CV%</div>
+          <div class="chart-wrap"><canvas id="chart-frn-vol"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TIPS TAB -->
+    <div class="tab-panel" id="panel-tips">
+      <div class="status-bar">
+        <div id="badge-tips" class="status-badge">—</div>
+        <div class="status-info" id="info-tips"></div>
+      </div>
+      <div class="metrics-row" id="metrics-tips"></div>
+      <div class="hist-diagnosis" id="hist-tips"></div>
+      <div class="charts-grid">
+        <div class="chart-card chart-full">
+          <div class="chart-title">TIPS 순포지션 + 4주 이동평균</div>
+          <div class="chart-wrap tall"><canvas id="chart-tips-pos"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">3개월 변화율 & 가속도</div>
+          <div class="chart-wrap"><canvas id="chart-tips-delta"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">변동성 — 8주 Rolling STD & CV%</div>
+          <div class="chart-wrap"><canvas id="chart-tips-vol"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- BOND VOL TAB -->
+    <div class="tab-panel" id="panel-bondvol">
+      <div class="status-bar">
+        <div id="badge-bondvol" class="status-badge">—</div>
+        <div class="status-info" id="info-bondvol">DGS10 데이터를 업로드하세요</div>
+      </div>
+      <div class="metrics-row" id="metrics-bondvol"></div>
+      <div class="hist-diagnosis" id="hist-bondvol"></div>
+
+      <!-- Bond Vol Criteria -->
+      <div class="criteria-box">
+        <div class="criteria-header">📌 국채 변동성 판단 기준</div>
+        <div class="criteria-grid cols4">
+          <div class="criteria-item">
+            <div class="criteria-label">① 20d Realized Vol (연율화)</div>
+            <div class="criteria-rule">일간 Δy의 20일 표준편차 × √252 × 100<br>단위: bps/yr</div>
+          </div>
+          <div class="criteria-item">
+            <div class="criteria-label">경고 체계</div>
+            <div class="criteria-rule">
+              <span class="r-normal">🟢 정상</span>: &lt; 80 bps<br>
+              <span class="r-caution">🟡 경계</span>: 80 ~ 120 bps<br>
+              <span class="r-danger">🔴 위험</span>: ≥ 120 bps
+            </div>
+          </div>
+          <div class="criteria-item">
+            <div class="criteria-label">② Vol × NP 교차신호</div>
+            <div class="criteria-rule">Z-Score 비교: Vol Z↑ + NP Z↓ 동시 = 시장이 얇아지는 구간.<br>두 선이 같은 방향(양수) = 최대 경계</div>
+          </div>
+          <div class="criteria-item">
+            <div class="criteria-label">핵심 해석 원칙</div>
+            <div class="criteria-rule">변동성 상승 단독은 경계.<br><span class="r-danger">NP 감소 + 변동성 확대 동시 발생</span> = 완충장치 부재 상태</div>
+          </div>
+        </div>
+      </div>
+      <div class="charts-grid">
+        <div class="chart-card chart-full">
+          <div class="chart-title">10Y 국채 금리 (DGS10) + 20일 Realized Vol (bps, 연율화)</div>
+          <div class="chart-subtitle">금리(좌축, %)와 변동성(우축, bps 연율). 금리 안정 중에 변동성 확대 = 표면 평온 내부 불안</div>
+          <div class="chart-wrap tall"><canvas id="chart-bv-yield"></canvas></div>
+          <div class="chart-legend">
+            <div class="legend-item"><div class="legend-dot" style="background:#e8a020"></div>DGS10 (%)</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#f04040;border-style:dashed"></div>20d Vol (bps 연율, 우축)</div>
+          </div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">변동성 추세 — 경계 80bps / 위험 120bps</div>
+          <div class="chart-subtitle">20일 실현변동성 바차트. 녹색&lt;80 / 노랑 80~120 / 빨강≥120bps 자동 색상 구분</div>
+          <div class="chart-wrap"><canvas id="chart-bv-vol"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Vol × NP 교차 신호 — 동시 악화시 시장 Thinning</div>
+          <div class="chart-subtitle">Vol Z-Score(빨강↑위험)와 NP Z-Score 역전(초록↑위험). 두 선이 동시에 양수 구간 = 시장이 가장 얇아진 시점</div>
+          <div class="chart-wrap"><canvas id="chart-bv-cross"></canvas></div>
+          <div class="chart-legend">
+            <div class="legend-item"><div class="legend-dot" style="background:#f04040"></div>Vol Z-Score</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#26d68a"></div>NP Z-Score (역전)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TGA & LIQUIDITY TAB -->
+    <div class="tab-panel" id="panel-liquidity">
+      <div class="status-bar">
+        <div id="badge-liquidity" class="status-badge">—</div>
+        <div class="status-info" id="info-liquidity">WTREGEN + WRESBAL 데이터를 업로드하세요</div>
+      </div>
+      <div class="metrics-row" id="metrics-liquidity"></div>
+      <div class="hist-diagnosis" id="hist-liquidity"></div>
+
+      <!-- Liquidity Criteria -->
+      <div class="criteria-box">
+        <div class="criteria-header">📌 TGA & 순유동성 판단 기준</div>
+        <div class="criteria-grid cols4">
+          <div class="criteria-item">
+            <div class="criteria-label">① ΔTGA 4주 변화</div>
+            <div class="criteria-rule">TGA 증가 = 시중 유동성 흡수 (긴축 효과)<br>TGA 감소 = 시중 유동성 방출 (완화 효과)</div>
+          </div>
+          <div class="criteria-item">
+            <div class="criteria-label">② ΔReserves 4주 변화</div>
+            <div class="criteria-rule">준비금 감소 = 은행 완충력 약화<br>임계 수준: ~$2.5T 이하 스트레스 구간</div>
+          </div>
+          <div class="criteria-item">
+            <div class="criteria-label">③ Net Liquidity = Reserves − TGA</div>
+            <div class="criteria-rule">
+              <span class="r-normal">🟢 정상</span>: ΔNet 4w ≥ 0<br>
+              <span class="r-caution">🟡 경계</span>: ΔNet 4w &lt; −50B$<br>
+              <span class="r-danger">🔴 위험</span>: ΔNet 4w &lt; −200B$
+            </div>
+          </div>
+          <div class="criteria-item">
+            <div class="criteria-label">핵심 위험 패턴</div>
+            <div class="criteria-rule"><span class="r-danger">TGA 증가 + Dealer NP 감소</span> = 이중 유동성 흡수.<br>시장이 자율이 아닌 관리상태 진입</div>
+          </div>
+        </div>
+      </div>
+      <div class="charts-grid">
+        <div class="chart-card">
+          <div class="chart-title">TGA 잔액 (B$) + 4주 변화량 (ΔTGA)</div>
+          <div class="chart-subtitle">막대: ΔTGA 4w (노랑=TGA증가=시중흡수 / 초록=TGA감소=시중방출). 선: TGA 절대 잔액</div>
+          <div class="chart-wrap"><canvas id="chart-liq-tga"></canvas></div>
+          <div class="chart-legend">
+            <div class="legend-item"><div class="legend-dot" style="background:#3090e0"></div>TGA (B$)</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#f0c030;border-style:dashed"></div>ΔTGA 4w (우축)</div>
+          </div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">준비금 (Reserves B$) + 4주 변화량 (ΔRes)</div>
+          <div class="chart-subtitle">막대: ΔReserves 4w (초록=증가/빨강=감소). 선: 준비금 절대 잔액. $2.5T 이하 = 스트레스 구간</div>
+          <div class="chart-wrap"><canvas id="chart-liq-res"></canvas></div>
+          <div class="chart-legend">
+            <div class="legend-item"><div class="legend-dot" style="background:#26d68a"></div>Reserves (B$)</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#9060ee;border-style:dashed"></div>ΔReserves 4w (우축)</div>
+          </div>
+        </div>
+        <div class="chart-card chart-full">
+          <div class="chart-title">순유동성 Net Liquidity = Reserves − TGA (B$) — 감소시 시장 유동성 압박</div>
+          <div class="chart-subtitle">시장의 실질 가용 유동성. 4W MA(파란선)와 함께 추세 확인. 급락 구간 = 긴축 + Dealer 후퇴 동시 발생 위험</div>
+          <div class="chart-wrap tall"><canvas id="chart-liq-net"></canvas></div>
+          <div class="chart-legend">
+            <div class="legend-item"><div class="legend-dot" style="background:#e8a020"></div>Net Liquidity (B$)</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#3090e0;border-style:dashed"></div>4W MA</div>
+            <div class="legend-item" style="font-size:9px;color:#4a6580">※ RRP 데이터 없으면 Net Liquidity = Reserves − TGA로 계산</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- COMPOSITE WARNING TAB -->
+    <div class="tab-panel" id="panel-composite">
+      <div class="status-bar">
+        <div id="badge-composite" class="status-badge">—</div>
+        <div class="status-info">모든 데이터 업로드 시 복합 경고 자동 계산</div>
+      </div>
+
+      <!-- Composite Criteria -->
+      <div class="criteria-box">
+        <div class="criteria-header">📌 복합 경고 판단 기준 — 4개 신호 동시 모니터링</div>
+        <div class="criteria-grid cols4">
+          <div class="criteria-item">
+            <div class="criteria-label">신호1: NP 3m 변화율</div>
+            <div class="criteria-rule">
+              <span class="r-normal">🟢</span> ΔNP₃ₘ ≥ 0<br>
+              <span class="r-caution">🟡</span> ΔNP₃ₘ &lt; 0<br>
+              <span class="r-danger">🔴</span> ΔNP₃ₘ &lt; 0 + 가속도↓
+            </div>
+          </div>
+          <div class="criteria-item">
+            <div class="criteria-label">신호2: Repo 의존도</div>
+            <div class="criteria-rule">
+              <span class="r-normal">🟢</span> Ratio &lt; 0.7x<br>
+              <span class="r-caution">🟡</span> 0.7 ~ 1.0x<br>
+              <span class="r-danger">🔴</span> ≥ 1.0x or O/N% ≥ 93%
+            </div>
+          </div>
+          <div class="criteria-item">
+            <div class="criteria-label">신호3: 국채 변동성</div>
+            <div class="criteria-rule">
+              <span class="r-normal">🟢</span> &lt; 80 bps<br>
+              <span class="r-caution">🟡</span> 80 ~ 120 bps<br>
+              <span class="r-danger">🔴</span> ≥ 120 bps
+            </div>
+          </div>
+          <div class="criteria-item">
+            <div class="criteria-label">복합 스코어 해석</div>
+            <div class="criteria-rule">
+              <span class="r-normal">🟢 0~0.5</span>: 정상<br>
+              <span class="r-caution">🟡 0.5~1.5</span>: 경계<br>
+              <span class="r-danger">🔴 ≥ 2.0</span>: 위험 — 완충장치 제거 구간
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="stage-banner-wrap" style="margin-bottom:20px;"></div>
+      <!-- Signal Cards Row -->
+      <div id="signal-cards" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;"></div>
+      <!-- Composite score -->
+      <div id="composite-score-bar" style="margin-bottom:20px;"></div>
+      <!-- Overlay Chart -->
+      <div class="charts-grid">
+        <div class="chart-card chart-full">
+          <div class="chart-title">복합 경고 타임라인 — 신호 동시 발화 구간 (Z-Score 정규화 비교)</div>
+          <div class="chart-subtitle">4개 신호를 52주 Z-Score로 정규화해 같은 축에 비교. 여러 선이 동시에 1σ 이상 = 위험 발화 구간</div>
+          <div class="chart-wrap tall"><canvas id="chart-comp-timeline"></canvas></div>
+          <div class="chart-legend">
+            <div class="legend-item"><div class="legend-dot" style="background:#26d68a"></div>NP 추세 (Z)</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#f04040"></div>Repo 의존도 (Z)</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#e8a020"></div>Bond Vol (Z)</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#3090e0"></div>순유동성 감소 (Z)</div>
+            <div class="legend-item"><div class="legend-dot" style="background:rgba(240,64,64,0.15)"></div>위험 발화 구간</div>
+          </div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">4개 신호 현재 퍼센타일 — 레이더 차트</div>
+          <div class="chart-subtitle">각 축: 현재값이 전체 역사 분포 중 몇 번째 %인지. 바깥=높은 스트레스</div>
+          <div class="radar-wrap"><canvas id="chart-comp-radar"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">4개 신호 동시 활성화 스코어 (주간)</div>
+          <div class="chart-subtitle">매주 1σ 이상 활성화된 신호 수. 3~4개 동시 발화 = 역사적 시장 충격 직전 구간</div>
+          <div class="chart-wrap"><canvas id="chart-comp-score"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">경고 조건별 발화 빈도 (히스토리)</div>
+          <div class="chart-subtitle">전체 기간 중 각 스코어 단계별 주 수. 현재 위치가 역사적으로 얼마나 이례적인지 파악</div>
+          <div class="chart-wrap"><canvas id="chart-comp-hist"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- REPO TAB -->
+    <div class="tab-panel" id="panel-repo">
+      <div class="status-bar">
+        <div id="badge-repo" class="status-badge">—</div>
+        <div class="status-info" id="info-repo"></div>
+      </div>
+      <div class="metrics-row" id="metrics-repo"></div>
+
+      <!-- Repo Criteria -->
+      <div class="criteria-box">
+        <div class="criteria-header">📌 Repo 의존도 판단 기준</div>
+        <div class="criteria-grid cols4">
+          <div class="criteria-item">
+            <div class="criteria-label">① Repo 의존도 비율</div>
+            <div class="criteria-rule">Total Repo ÷ Net Position<br>
+              <span class="r-normal">🟢 정상</span>: &lt; 0.7x<br>
+              <span class="r-caution">🟡 경계</span>: 0.7 ~ 1.0x<br>
+              <span class="r-danger">🔴 위험</span>: ≥ 1.0x
+            </div>
+          </div>
+          <div class="criteria-item">
+            <div class="criteria-label">② 성장 괴리 (ΔRepo − ΔNP)</div>
+            <div class="criteria-rule">13주 변화량 비교.<br>양수(빨간 막대) = Repo↑ + NP↓<br>완충장치 제거 신호</div>
+          </div>
+          <div class="criteria-item">
+            <div class="criteria-label">③ Overnight 비중 %</div>
+            <div class="criteria-rule">Overnight ÷ (Overnight + Term)<br>
+              <span class="r-normal">🟢 정상</span>: &lt; 85%<br>
+              <span class="r-caution">🟡 경계</span>: 85 ~ 93%<br>
+              <span class="r-danger">🔴 위험</span>: ≥ 93%
+            </div>
+          </div>
+          <div class="criteria-item">
+            <div class="criteria-label">방어상태 조건 (3중 동시)</div>
+            <div class="criteria-rule">
+              <span class="r-danger">🔴</span> 순포지션 급감<br>
+              <span class="r-danger">🔴</span> Repo 의존도 ≥ 1.0x<br>
+              <span class="r-danger">🔴</span> Overnight 비중 ≥ 93%
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="hist-diagnosis" id="hist-repo"></div>
+      <!-- Chart row 1: Ratio trend + Divergence -->
+      <div class="charts-grid">
+        <div class="chart-card chart-full">
+          <div class="chart-title">① Repo 의존도 비율 (Repo / Net Position) + 4주 MA — 경계 0.7x / 위험 1.0x</div>
+          <div class="chart-subtitle">비율이 올라갈수록 자기자본 보유 감소, 단기자금 의존 증가. 1.0x 초과 = Repo로만 포지션 유지</div>
+          <div class="chart-wrap tall"><canvas id="chart-repo-ratio"></canvas></div>
+          <div class="chart-legend">
+            <div class="legend-item"><div class="legend-dot" style="background:#f04040"></div>Repo/NP Ratio</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#e8a020;border-style:dashed"></div>4W MA</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#f0c030"></div>경계선 0.7x</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#f04040"></div>위험선 1.0x</div>
+          </div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">② Repo 성장 vs Net Position 성장 (13주 변화량 비교)</div>
+          <div class="chart-subtitle">빨간 막대(양수) = Repo 늘고 NP 줄어드는 구간 → 완충장치 제거 패턴</div>
+          <div class="chart-wrap"><canvas id="chart-repo-diverge"></canvas></div>
+          <div class="chart-legend">
+            <div class="legend-item"><div class="legend-dot" style="background:#f04040"></div>ΔRepo₁₃w</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#26d68a"></div>ΔNP₁₃w</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#9060ee;border-style:dashed"></div>괴리 (ΔRepo−ΔNP)</div>
+          </div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">③ Maturity Mix — Overnight 비중 % (높을수록 롤오버 리스크↑)</div>
+          <div class="chart-subtitle">스택바: Overnight(청색) + Term(보라). 선: Overnight 비중%. 비중 93% 이상 = 매일 롤오버 압박 구간</div>
+          <div class="chart-wrap"><canvas id="chart-repo-maturity"></canvas></div>
+          <div class="chart-legend">
+            <div class="legend-item"><div class="legend-dot" style="background:#30b8cc"></div>Overnight Repo</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#9060ee"></div>Term Repo</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#f0c030;border-style:dashed"></div>Overnight 비중%</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+// CONFIG
+// ─────────────────────────────────────────────
+const REPO_SERIES = {
+  TotalRepo: 'PDSIRRA-FGMTOT',
+  Overnight: 'PDSIOSB-UTSETTOT',
+  Term:      'PDSIOSB-UTSTTOT',
+};
+const REPO_THRESHOLDS = { caution: 0.70, danger: 1.00, ovPctDanger: 93, ovPctCaution: 85 };
+
+const SERIES = {
+  Bills: 'PDPOSGS-B',
+  FRN:   'PDPOSGS-BFRN',
+  TIPS:  'PDTIPSTOT',
+  Total: 'PDPOSGST-TOT',
+};
+const TAB_KEYS = ['total','bills','coupons','frn','tips'];
+const LABELS = { total:'TOTAL', bills:'T-BILLS', coupons:'COUPONS', frn:'FRN', tips:'TIPS' };
+const COLORS = {
+  total:   { line:'#e8a020', ma:'#3090e0', fill:'rgba(232,160,32,0.07)' },
+  bills:   { line:'#30b8cc', ma:'#9060ee', fill:'rgba(48,184,204,0.07)' },
+  coupons: { line:'#26d68a', ma:'#f0c030', fill:'rgba(38,214,138,0.07)' },
+  frn:     { line:'#9060ee', ma:'#3090e0', fill:'rgba(144,96,238,0.07)' },
+  tips:    { line:'#f04040', ma:'#e8a020', fill:'rgba(240,64,64,0.07)' },
+};
+
+let allData = {};     // { total: [{date, value}], bills: [...], ... }
+let repoData = {};    // { ratio, overnight, term, diverge } arrays
+let fredData = {       // FRED series: weekly/daily
+  dgs10:    { dates:[], values:[] },   // daily 10Y yield
+  reserves: { dates:[], values:[] },   // weekly, Billions
+  tga:      { dates:[], values:[] },   // weekly, Billions
+};
+let chartInstances = {};
+let activeRange = 104;
+let activeTab = 'total';
+
+
+// ─────────────────────────────────────────────
+// FRED API INTEGRATION
+// ─────────────────────────────────────────────
+const FRED_SERIES = {
+  dgs10:    { id: 'DGS10',    label: 'DGS10',    scale: 1,      key: 'dgs10',    pill: 'pill-dgs10' },
+  reserves: { id: 'WRESBAL',  label: 'WRESBAL',  scale: 1/1000, key: 'reserves', pill: 'pill-wresbal' },
+  tga:      { id: 'WTREGEN',  label: 'WTREGEN',  scale: 1/1000, key: 'tga',      pill: 'pill-wtregen' },
+};
+
+// 3-stage CORS proxy attempt
+async function fredFetch(seriesId, apiKey) {
+  const base = `https://api.stlouisfed.org/fred/series/observations?series_id=${seriesId}&api_key=${apiKey}&file_type=json&observation_start=2002-01-01`;
+  const proxies = [
+    url => url,                                                          // 1. Direct
+    url => `https://corsproxy.io/?${encodeURIComponent(url)}`,          // 2. corsproxy.io
+    url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, // 3. allorigins
+  ];
+
+  let lastErr = null;
+  for (const wrap of proxies) {
+    try {
+      const res = await fetch(wrap(base), { signal: AbortSignal.timeout(12000) });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        throw new Error(`HTTP ${res.status}: ${txt.slice(0, 200)}`);
+      }
+      const json = await res.json();
+      // FRED error response
+      if (json.error_message) throw new Error(`FRED: ${json.error_message}`);
+      if (!json.observations) throw new Error('응답에 observations 없음');
+      return json.observations;
+    } catch (e) {
+      lastErr = e;
+      // If it's a FRED API-level error (bad key etc.), don't try more proxies
+      if (e.message && e.message.startsWith('FRED:')) throw e;
+    }
+  }
+  throw lastErr || new Error('모든 프록시 실패');
+}
+
+function showFredError(msg) {
+  const el = document.getElementById('fredErrorMsg');
+  el.textContent = '⚠ ' + msg;
+  el.style.display = 'block';
+}
+function clearFredError() {
+  const el = document.getElementById('fredErrorMsg');
+  el.style.display = 'none';
+  el.textContent = '';
+}
+
+function setPillState(pillId, state, extra) {
+  const el = document.getElementById(pillId);
+  if (!el) return;
+  el.className = `fred-series-pill ${state}`;
+  const icons = { fetching: '⏳', ok: '✅', err: '✗', '': '' };
+  el.textContent = (icons[state] || '') + ' ' + el.textContent.replace(/^[✅✗⏳] /, '').replace(/\s.+$/, '').trim()
+                   + (extra ? ' ' + extra : '');
+  // Rebuild cleanly
+  const base = pillId.replace('pill-','').toUpperCase();
+  const labels = { 'pill-dgs10':'DGS10', 'pill-wresbal':'WRESBAL', 'pill-wtregen':'WTREGEN' };
+  el.textContent = (icons[state] ? icons[state] + ' ' : '') + labels[pillId] + (extra ? ' ' + extra : '');
+}
+
+async function fetchAllFred() {
+  const keyEl  = document.getElementById('fredApiKey');
+  const apiKey = keyEl.value.trim();
+  if (!apiKey) {
+    showFredError('API Key를 입력하세요. fred.stlouisfed.org에서 무료 발급 가능합니다.');
+    return;
+  }
+
+  clearFredError();
+  const btn = document.getElementById('fredFetchBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ 로딩 중...';
+
+  const seriesList = Object.values(FRED_SERIES);
+  let successCount = 0;
+  const errors = [];
+
+  for (const s of seriesList) {
+    setPillState(s.pill, 'fetching');
+    try {
+      const obs = await fredFetch(s.id, apiKey);
+      // Convert to fredData format
+      const sorted = obs
+        .filter(o => o.value !== '.' && o.value !== '')
+        .map(o => ({ date: o.date, value: parseFloat(o.value) * s.scale }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+
+      fredData[s.key].dates  = sorted.map(r => r.date);
+      fredData[s.key].values = sorted.map(r => r.value);
+      loadedSources.add(s.key);
+      setPillState(s.pill, 'ok', `(${sorted.length}건)`);
+      successCount++;
+    } catch (e) {
+      setPillState(s.pill, 'err');
+      errors.push(`${s.label}: ${e.message}`);
+    }
+  }
+
+  btn.disabled = false;
+  btn.textContent = '⬇ FRED 로드';
+
+  if (errors.length > 0) {
+    showFredError(errors.join(' | '));
+  }
+
+  if (successCount > 0) {
+    updateAfterLoad();
+  }
+}
+
+function toggleFredPanel() {
+  const body = document.getElementById('fredPanelBody');
+  const btn  = document.getElementById('fredPanelToggle');
+  const hidden = body.style.display === 'none';
+  body.style.display = hidden ? '' : 'none';
+  btn.textContent    = hidden ? '숨기기' : '펼치기';
+}
+
+function clearFredKey() {
+  document.getElementById('fredApiKey').value = '';
+  const btn = document.querySelector('.fred-clear-btn');
+  btn.textContent = '✅ 초기화됨';
+  setTimeout(() => { btn.textContent = '🗑 초기화'; }, 1800);
+}
+
+// API 키 자동 로드 비활성화 (매번 직접 입력)
+// (function restoreFredKey() {
+//   try {
+//     const saved = localStorage.getItem('fred_api_key');
+//     if (saved) document.getElementById('fredApiKey').value = saved;
+//   } catch(e) {}
+// })();
+
+// ─────────────────────────────────────────────
+// UPLOAD / DRAG & DROP
+// ─────────────────────────────────────────────
+const uploadZone = document.getElementById('uploadZone');
+const fileInput  = document.getElementById('fileInput');
+
+uploadZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => {
+  if (e.target.files.length > 0) handleFiles(Array.from(e.target.files));
+  fileInput.value = '';
+});
+
+document.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+document.addEventListener('dragleave', e => { if (!uploadZone.contains(e.relatedTarget)) uploadZone.classList.remove('drag-over'); });
+document.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('drag-over');
+  const csvs = Array.from(e.dataTransfer.files).filter(f => f.name.endsWith('.csv'));
+  if (csvs.length > 0) handleFiles(csvs);
+});
+
+// Detect file type from headers or filename
+function detectFileType(rows, filename) {
+  if (!rows || rows.length === 0) return null;
+  const headers = Object.keys(rows[0]);
+  // NY Fed PD Statistics: has 'As Of Date' + 'Time Series'
+  if (headers.includes('As Of Date') || headers.includes('Time Series')) return 'nyfed';
+  // FRED format: has 'observation_date'
+  if (headers.includes('observation_date')) {
+    const fn = filename.toLowerCase();
+    if (fn.includes('dgs10')) return 'fred_dgs10';
+    if (fn.includes('wresbal')) return 'fred_reserves';
+    if (fn.includes('wtregen') || fn.includes('tga')) return 'fred_tga';
+    // fallback: second column name
+    const col2 = headers[1];
+    if (col2 === 'DGS10') return 'fred_dgs10';
+    if (col2 === 'WRESBAL') return 'fred_reserves';
+    if (col2 === 'WTREGEN') return 'fred_tga';
+  }
+  return null;
+}
+
+let loadedSources = new Set();
+
+function handleFiles(files) {
+  let pending = files.length;
+  files.forEach(file => {
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: results => {
+        const type = detectFileType(results.data, file.name);
+        if (type === 'nyfed') {
+          processNYFedData(results.data);
+          loadedSources.add('nyfed');
+        } else if (type === 'fred_dgs10') {
+          processFredSeries(results.data, 'DGS10', 'dgs10');
+          loadedSources.add('dgs10');
+        } else if (type === 'fred_reserves') {
+          processFredSeries(results.data, 'WRESBAL', 'reserves');
+          loadedSources.add('reserves');
+        } else if (type === 'fred_tga') {
+          processFredSeries(results.data, 'WTREGEN', 'tga');
+          loadedSources.add('tga');
+        }
+        pending--;
+        if (pending === 0) {
+          updateAfterLoad();
+        }
+      }
+    });
+  });
+}
+
+function processFredSeries(rows, colName, key) {
+  const sorted = rows
+    .filter(r => r[colName] && r[colName] !== '.')
+    .map(r => ({ date: r.observation_date, value: parseFloat(r[colName]) }))
+    .sort((a,b) => a.date.localeCompare(b.date));
+  // reserves and tga: divide by 1000 to get Billions
+  const scale = (key === 'reserves' || key === 'tga') ? 1/1000 : 1;
+  fredData[key].dates  = sorted.map(r => r.date);
+  fredData[key].values = sorted.map(r => r.value * scale);
+}
+
+function updateAfterLoad() {
+  const hasPD = loadedSources.has('nyfed');
+  const hasDGS = loadedSources.has('dgs10');
+  const hasLiq = loadedSources.has('reserves') || loadedSources.has('tga');
+  
+  const sources = [...loadedSources].join(', ');
+  document.getElementById('lastUpdate').textContent = `로드: ${sources}`;
+  
+  // Show dashboard for any loaded source
+  document.getElementById('noDataState').style.display = 'none';
+  document.getElementById('dashContent').style.display = 'block';
+  renderAll();
+}
+
+// ─────────────────────────────────────────────
+// DATA PROCESSING
+// ─────────────────────────────────────────────
+function processNYFedData(rows) {
+  // Group by date → series → value
+  const byDate = {};
+  rows.forEach(r => {
+    const date   = r['As Of Date'] || r['as_of_date'] || r['date'];
+    const series = r['Time Series'] || r['series'];
+    const val    = parseFloat(r['Value (millions)'] || r['value']);
+    if (!date || !series || isNaN(val)) return;
+    if (!byDate[date]) byDate[date] = {};
+    byDate[date][series] = val;
+  });
+
+  // Build sorted weekly dates with all 4 required series
+  const dates = Object.keys(byDate)
+    .filter(d => {
+      const r = byDate[d];
+      return r[SERIES.Bills] !== undefined &&
+             r[SERIES.FRN]   !== undefined &&
+             r[SERIES.TIPS]  !== undefined &&
+             r[SERIES.Total] !== undefined;
+    })
+    .sort();
+
+  allData = { total: [], bills: [], coupons: [], frn: [], tips: [] };
+
+  dates.forEach(d => {
+    const r = byDate[d];
+    const bills   = r[SERIES.Bills];
+    const frn     = r[SERIES.FRN];
+    const tips    = r[SERIES.TIPS];
+    const total   = r[SERIES.Total];
+    const coupons = total - bills - frn - tips;
+    allData.total.push({date: d, value: total});
+    allData.bills.push({date: d, value: bills});
+    allData.coupons.push({date: d, value: coupons});
+    allData.frn.push({date: d, value: frn});
+    allData.tips.push({date: d, value: tips});
+  });
+
+  // Build repo data (wider date filter — only need Total+Repo series)
+  const repoDates = Object.keys(byDate)
+    .filter(d => byDate[d][SERIES.Total] !== undefined && byDate[d][REPO_SERIES.TotalRepo] !== undefined)
+    .sort();
+
+  repoData = { dates: [], ratio: [], repo: [], overnight: [], term: [], npTot: [] };
+  repoDates.forEach(d => {
+    const r = byDate[d];
+    const repo = r[REPO_SERIES.TotalRepo];
+    const ov   = r[REPO_SERIES.Overnight] || null;
+    const term = r[REPO_SERIES.Term] || null;
+    const np   = r[SERIES.Total];
+    repoData.dates.push(d);
+    repoData.repo.push(repo);
+    repoData.overnight.push(ov);
+    repoData.term.push(term);
+    repoData.npTot.push(np);
+    repoData.ratio.push(np > 0 ? repo / np : null);
+  });
+
+  if (dates.length > 0) {
+    loadedSources.add('nyfed');
+    updateAfterLoad();
+  }
+}
+
+// ─────────────────────────────────────────────
+// INDICATORS
+// ─────────────────────────────────────────────
+function calcMA(arr, window) {
+  return arr.map((_, i) => {
+    if (i < window - 1) return null;
+    const slice = arr.slice(i - window + 1, i + 1);
+    return slice.reduce((s, v) => s + v, 0) / window;
+  });
+}
+
+function calcDelta3m(arr) {
+  // 13 weeks back
+  return arr.map((v, i) => i >= 13 ? v - arr[i - 13] : null);
+}
+
+function calcAccel(delta3m) {
+  // current delta - previous delta (13 weeks ago)
+  return delta3m.map((v, i) => {
+    if (v === null) return null;
+    const prev = i >= 13 ? delta3m[i - 13] : null;
+    if (prev === null) return null;
+    return v - prev;
+  });
+}
+
+function calcRollingSTD(arr, window) {
+  // Weekly changes first
+  const changes = arr.map((v, i) => i === 0 ? null : v - arr[i-1]);
+  return changes.map((_, i) => {
+    if (i < window) return null;
+    const slice = changes.slice(i - window + 1, i + 1).filter(x => x !== null);
+    if (slice.length < 2) return null;
+    const mean = slice.reduce((s,x) => s+x, 0) / slice.length;
+    const variance = slice.reduce((s,x) => s + (x - mean)**2, 0) / (slice.length - 1);
+    return Math.sqrt(variance);
+  });
+}
+
+function calcCV(std, ma4) {
+  return std.map((s, i) => {
+    if (s === null || ma4[i] === null || ma4[i] === 0) return null;
+    return (s / Math.abs(ma4[i])) * 100;
+  });
+}
+
+function getStatus(delta3m, accel) {
+  if (delta3m === null) return 'normal';
+  if (delta3m >= 0) return 'normal';
+  if (delta3m < 0 && (accel === null || accel >= 0)) return 'caution';
+  return 'danger';
+}
+
+function computeSeries(raw) {
+  const values = raw.map(r => r.value);
+  const dates  = raw.map(r => r.date);
+  const ma4    = calcMA(values, 4);
+  const d3m    = calcDelta3m(values);
+  const accel  = calcAccel(d3m);
+  const std8   = calcRollingSTD(values, 8);
+  const cv     = calcCV(std8, ma4);
+  return { dates, values, ma4, d3m, accel, std8, cv };
+}
+
+// ─────────────────────────────────────────────
+// RENDER
+// ─────────────────────────────────────────────
+function renderAll() {
+  TAB_KEYS.forEach(key => renderTab(key));
+  renderRepoTab();
+  renderBondVolTab();
+  renderLiquidityTab();
+  renderCompositeTab();
+}
+
+function getSlice(computed) {
+  const n = computed.dates.length;
+  const start = Math.max(0, n - activeRange);
+  return {
+    dates:  computed.dates.slice(start),
+    values: computed.values.slice(start),
+    ma4:    computed.ma4.slice(start),
+    d3m:    computed.d3m.slice(start),
+    accel:  computed.accel.slice(start),
+    std8:   computed.std8.slice(start),
+    cv:     computed.cv.slice(start),
+  };
+}
+
+function renderTab(key) {
+  if (!allData[key] || allData[key].length === 0) return;
+  const raw = allData[key];
+  const comp = computeSeries(raw);
+  const s = getSlice(comp);
+
+  // Latest values
+  const n = s.values.length;
+  const latestVal  = s.values[n-1];
+  const latestMA4  = s.ma4.filter(x => x !== null).slice(-1)[0];
+  const latestD3m  = s.d3m.filter(x => x !== null).slice(-1)[0];
+  const latestAccel= s.accel.filter(x => x !== null).slice(-1)[0];
+  const latestSTD  = s.std8.filter(x => x !== null).slice(-1)[0];
+  const latestCV   = s.cv.filter(x => x !== null).slice(-1)[0];
+
+  const status = getStatus(latestD3m, latestAccel);
+
+  // Status badge
+  const badge = document.getElementById(`badge-${key}`);
+  const statusText = { normal: '정상 NORMAL', caution: '경계 CAUTION', danger: '위험 DANGER' };
+  badge.textContent = statusText[status];
+  badge.className = `status-badge ${status}`;
+
+  // Info line
+  const info = document.getElementById(`info-${key}`);
+  info.innerHTML = `데이터: <span>${s.dates[0]}</span> ~ <span>${s.dates[n-1]}</span>  |  ${s.dates.length}주`;
+
+  // Metrics
+  renderMetrics(key, latestVal, latestMA4, latestD3m, latestAccel, latestSTD, latestCV, status);
+
+  // Historical diagnosis (uses full dataset, not sliced)
+  const allVals  = comp.values;
+  const allDates = comp.dates;
+  renderHistDiagNP(key, allVals, allDates, latestVal, latestD3m);
+
+  // Charts — position chart now includes percentile bands
+  renderPosChart(key, s, allVals);
+  renderDeltaChart(key, s);
+  renderVolChart(key, s);
+}
+
+function fmt(v) {
+  if (v === null || v === undefined) return '—';
+  const abs = Math.abs(v);
+  if (abs >= 1000000) return (v/1000000).toFixed(2) + 'T';
+  if (abs >= 1000) return (v/1000).toFixed(1) + 'B';
+  return v.toFixed(0) + 'M';
+}
+function fmtK(v) {
+  if (v === null || v === undefined) return '—';
+  return (v >= 0 ? '+' : '') + (v/1000).toFixed(1) + 'B';
+}
+
+function renderMetrics(key, val, ma4, d3m, accel, std, cv, status) {
+  const el = document.getElementById(`metrics-${key}`);
+  const d3mCls  = d3m === null ? '' : (d3m >= 0 ? 'pos' : 'neg');
+  const accelCls = accel === null ? '' : (accel >= 0 ? 'pos' : 'neg');
+  const topColors = { normal:'green', caution:'yellow', danger:'red' };
+  const tc = topColors[status];
+
+  el.innerHTML = `
+    <div class="metric-card gold">
+      <div class="metric-label">현재 포지션</div>
+      <div class="metric-value">${fmt(val)}</div>
+      <div class="metric-sub">단위: 백만 달러</div>
+    </div>
+    <div class="metric-card blue">
+      <div class="metric-label">4주 이동평균</div>
+      <div class="metric-value">${fmt(ma4)}</div>
+      <div class="metric-sub">단기 추세선</div>
+    </div>
+    <div class="metric-card ${tc}">
+      <div class="metric-label">3개월 변화율 ΔNP₃ₘ</div>
+      <div class="metric-value ${d3mCls}">${fmtK(d3m)}</div>
+      <div class="metric-sub">음수: 경계 진입</div>
+    </div>
+    <div class="metric-card ${accel !== null && accel < 0 && d3m !== null && d3m < 0 ? 'red' : 'teal'}">
+      <div class="metric-label">가속도 Δ²NP</div>
+      <div class="metric-value ${accelCls}">${fmtK(accel)}</div>
+      <div class="metric-sub">음수: 하락 가속</div>
+    </div>
+    <div class="metric-card purple">
+      <div class="metric-label">변동성 CV%</div>
+      <div class="metric-value ${cv !== null && cv > 30 ? 'neg' : ''}">${cv !== null ? cv.toFixed(1)+'%' : '—'}</div>
+      <div class="metric-sub">8W STD / |4W MA|</div>
+    </div>
+  `;
+}
+
+const CHART_DEFAULTS = {
+  responsive: true,
+  maintainAspectRatio: false,
+  animation: { duration: 400 },
+  plugins: {
+    legend: { display: false },
+    tooltip: {
+      backgroundColor: '#0d1320',
+      titleColor: '#7a9bb5',
+      bodyColor: '#c8d6e5',
+      borderColor: '#1e2d45',
+      borderWidth: 1,
+      titleFont: { family: 'IBM Plex Mono', size: 10 },
+      bodyFont: { family: 'IBM Plex Mono', size: 11 },
+    }
+  },
+  scales: {
+    x: {
+      ticks: { color: '#4a6580', font: { family: 'IBM Plex Mono', size: 11 }, maxTicksLimit: 8 },
+      grid: { color: 'rgba(30,45,69,0.4)' },
+    },
+    y: {
+      ticks: {
+        color: '#4a6580',
+        font: { family: 'IBM Plex Mono', size: 11 },
+        callback: v => {
+          if (Math.abs(v) >= 1000000) return (v/1000000).toFixed(1)+'T';
+          if (Math.abs(v) >= 1000) return (v/1000).toFixed(0)+'B';
+          return v;
+        }
+      },
+      grid: { color: 'rgba(30,45,69,0.4)' },
+    }
+  }
+};
+
+function destroyChart(id) {
+  if (chartInstances[id]) { chartInstances[id].destroy(); delete chartInstances[id]; }
+}
+
+function renderPosChart(key, s, allVals) {
+  const id = `chart-${key}-pos`;
+  destroyChart(id);
+  const ctx = document.getElementById(id).getContext('2d');
+  const c = COLORS[key];
+  const labels = s.dates.map(d => d.slice(0,7));
+  const n = s.values.length;
+
+  // Compute rolling percentile bands from full history, then slice to view window
+  // Use full allVals to build bands, but only show the slice window
+  const fullN = (allVals || s.values).length;
+  const bandWindow = Math.min(fullN, 260); // 5yr rolling
+  const allBands = rollingBands(allVals || s.values, bandWindow);
+  const startIdx = Math.max(0, fullN - n);
+  const bands = allBands.slice(startIdx);
+
+  const bP10 = bands.map(b => b ? b.p10 : null);
+  const bP25 = bands.map(b => b ? b.p25 : null);
+  const bP75 = bands.map(b => b ? b.p75 : null);
+  const bP90 = bands.map(b => b ? b.p90 : null);
+
+  chartInstances[id] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        // P10–P90 band (outermost, very subtle)
+        { label: 'P10', data: bP10, borderColor: 'transparent', backgroundColor: 'rgba(30,45,69,0.0)', borderWidth: 0, fill: false, pointRadius: 0 },
+        { label: 'P10–P90', data: bP90, borderColor: 'transparent', backgroundColor: 'rgba(74,101,128,0.10)', borderWidth: 0, fill: '-1', pointRadius: 0 },
+        // P25–P75 band (IQR, more visible)
+        { label: 'P25', data: bP25, borderColor: 'transparent', backgroundColor: 'rgba(30,45,69,0.0)', borderWidth: 0, fill: false, pointRadius: 0 },
+        { label: 'P25–P75 (IQR)', data: bP75, borderColor: 'transparent', backgroundColor: 'rgba(74,101,128,0.18)', borderWidth: 0, fill: '-1', pointRadius: 0 },
+        // Actual position
+        {
+          label: '순포지션',
+          data: s.values,
+          borderColor: c.line,
+          backgroundColor: c.fill,
+          borderWidth: 1.5,
+          fill: true,
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          tension: 0.2,
+          order: 0,
+        },
+        // 4W MA
+        {
+          label: '4W MA',
+          data: s.ma4,
+          borderColor: c.ma,
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          borderDash: [4, 3],
+          fill: false,
+          pointRadius: 0,
+          tension: 0.3,
+          order: 0,
+        }
+      ]
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      interaction: { intersect: false, mode: 'index' },
+      plugins: {
+        ...CHART_DEFAULTS.plugins,
+        tooltip: {
+          ...CHART_DEFAULTS.plugins.tooltip,
+          filter: item => ['순포지션','4W MA','P25–P75 (IQR)','P10–P90'].includes(item.dataset.label),
+        }
+      }
+    }
+  });
+}
+
+function renderDeltaChart(key, s) {
+  const id = `chart-${key}-delta`;
+  destroyChart(id);
+  const ctx = document.getElementById(id).getContext('2d');
+  const labels = s.dates.map(d => d.slice(0,7));
+
+  // Color bars: positive = green, negative = red
+  const d3mColors = s.d3m.map(v => v === null ? 'transparent' : (v >= 0 ? 'rgba(38,214,138,0.6)' : 'rgba(240,64,64,0.6)'));
+  const accelColors = s.accel.map(v => v === null ? 'transparent' : (v >= 0 ? 'rgba(48,144,224,0.5)' : 'rgba(240,192,48,0.5)'));
+
+  chartInstances[id] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'ΔNP₃ₘ',
+          data: s.d3m,
+          backgroundColor: d3mColors,
+          borderColor: d3mColors,
+          borderWidth: 0,
+          yAxisID: 'y',
+          order: 2,
+        },
+        {
+          label: 'Δ²NP (가속도)',
+          data: s.accel,
+          type: 'line',
+          borderColor: '#f0c030',
+          backgroundColor: 'transparent',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          tension: 0.3,
+          yAxisID: 'y',
+          order: 1,
+        }
+      ]
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      interaction: { intersect: false, mode: 'index' },
+      plugins: {
+        ...CHART_DEFAULTS.plugins,
+        annotation: {
+          annotations: {
+            zeroLine: {
+              type: 'line', y: 0, yMax: 0,
+              borderColor: 'rgba(200,214,229,0.2)', borderWidth: 1,
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+function renderVolChart(key, s) {
+  const id = `chart-${key}-vol`;
+  destroyChart(id);
+  const ctx = document.getElementById(id).getContext('2d');
+  const labels = s.dates.map(d => d.slice(0,7));
+  const c = COLORS[key];
+
+  chartInstances[id] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: '8W Rolling STD',
+          data: s.std8,
+          borderColor: c.line,
+          backgroundColor: 'rgba(232,160,32,0.05)',
+          borderWidth: 1.5,
+          fill: true,
+          pointRadius: 0,
+          tension: 0.3,
+          yAxisID: 'y',
+        },
+        {
+          label: 'CV% (정규화 변동성)',
+          data: s.cv,
+          borderColor: '#9060ee',
+          backgroundColor: 'transparent',
+          borderWidth: 1.5,
+          borderDash: [3, 3],
+          fill: false,
+          pointRadius: 0,
+          tension: 0.3,
+          yAxisID: 'y2',
+        }
+      ]
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      interaction: { intersect: false, mode: 'index' },
+      scales: {
+        ...CHART_DEFAULTS.scales,
+        y: {
+          ...CHART_DEFAULTS.scales.y,
+          position: 'left',
+          title: {
+            display: true,
+            text: 'STD (M$)',
+            color: '#4a6580',
+            font: { family: 'IBM Plex Mono', size: 11 }
+          }
+        },
+        y2: {
+          position: 'right',
+          grid: { drawOnChartArea: false },
+          ticks: {
+            color: '#4a6580',
+            font: { family: 'IBM Plex Mono', size: 11 },
+            callback: v => v.toFixed(0) + '%'
+          },
+          title: {
+            display: true,
+            text: 'CV%',
+            color: '#4a6580',
+            font: { family: 'IBM Plex Mono', size: 11 }
+          }
+        }
+      }
+    }
+  });
+}
+
+
+// ─────────────────────────────────────────────
+// REPO TAB RENDER
+// ─────────────────────────────────────────────
+function getRepoSlice() {
+  const n = repoData.dates.length;
+  const start = Math.max(0, n - activeRange);
+  const sl = k => repoData[k] ? repoData[k].slice(start) : [];
+  return {
+    dates:     sl('dates'),
+    ratio:     sl('ratio'),
+    repo:      sl('repo'),
+    overnight: sl('overnight'),
+    term:      sl('term'),
+    npTot:     sl('npTot'),
+  };
+}
+
+function renderRepoTab() {
+  if (!repoData.dates || repoData.dates.length === 0) return;
+  const s = getRepoSlice();
+  const n = s.dates.length;
+
+  // Compute ratio MA4
+  const ratioMA4 = calcMA(s.ratio.map(v => v === null ? 0 : v), 4)
+    .map((v, i) => s.ratio[i] === null ? null : v);
+
+  // Compute 13w deltas for divergence
+  const deltaRepo = s.repo.map((v, i) => i >= 13 ? v - s.repo[i-13] : null);
+  const deltaNP   = s.npTot.map((v, i) => i >= 13 ? v - s.npTot[i-13] : null);
+  const diverge   = deltaRepo.map((v, i) => v !== null && deltaNP[i] !== null ? v - deltaNP[i] : null);
+
+  // Overnight % 
+  const ovPct = s.overnight.map((v, i) => {
+    const tot = (v || 0) + (s.term[i] || 0);
+    return tot > 0 ? (v / tot) * 100 : null;
+  });
+
+  // Latest values
+  const latestRatio = s.ratio.filter(x => x !== null).slice(-1)[0];
+  const latestRatioMA = ratioMA4.filter(x => x !== null).slice(-1)[0];
+  const latestOvPct   = ovPct.filter(x => x !== null).slice(-1)[0];
+  const latestRepo    = s.repo.slice(-1)[0];
+  const latestDiverge = diverge.filter(x => x !== null).slice(-1)[0];
+  const latestNP      = s.npTot.slice(-1)[0];
+
+  // Status logic
+  let repoStatus = 'normal';
+  if (latestRatio >= REPO_THRESHOLDS.danger || (latestOvPct !== null && latestOvPct >= REPO_THRESHOLDS.ovPctDanger)) {
+    repoStatus = 'danger';
+  } else if (latestRatio >= REPO_THRESHOLDS.caution || (latestOvPct !== null && latestOvPct >= REPO_THRESHOLDS.ovPctCaution)) {
+    repoStatus = 'caution';
+  }
+
+  // Badge
+  const badge = document.getElementById('badge-repo');
+  const statusText = { normal: '정상 NORMAL', caution: '경계 CAUTION', danger: '위험 DANGER' };
+  badge.textContent = statusText[repoStatus];
+  badge.className = `status-badge ${repoStatus}`;
+
+  document.getElementById('info-repo').innerHTML =
+    `데이터: <span>${s.dates[0]}</span> ~ <span>${s.dates[n-1]}</span>  |  ${n}주`;
+
+  // Metrics
+  const topColors = { normal:'green', caution:'yellow', danger:'red' };
+  const tc = topColors[repoStatus];
+  document.getElementById('metrics-repo').innerHTML = `
+    <div class="metric-card ${tc}">
+      <div class="metric-label">Repo 의존도 비율</div>
+      <div class="metric-value ${latestRatio >= 1 ? 'neg' : latestRatio >= 0.7 ? '' : 'pos'}">${latestRatio !== null ? latestRatio.toFixed(2)+'x' : '—'}</div>
+      <div class="metric-sub">Repo / Net Position</div>
+    </div>
+    <div class="metric-card blue">
+      <div class="metric-label">비율 4W MA</div>
+      <div class="metric-value">${latestRatioMA !== null ? latestRatioMA.toFixed(2)+'x' : '—'}</div>
+      <div class="metric-sub">추세 완화여부</div>
+    </div>
+    <div class="metric-card ${latestOvPct >= REPO_THRESHOLDS.ovPctDanger ? 'red' : latestOvPct >= REPO_THRESHOLDS.ovPctCaution ? 'yellow' : 'teal'}">
+      <div class="metric-label">Overnight 비중 %</div>
+      <div class="metric-value ${latestOvPct >= REPO_THRESHOLDS.ovPctDanger ? 'neg' : ''}">${latestOvPct !== null ? latestOvPct.toFixed(1)+'%' : '—'}</div>
+      <div class="metric-sub">롤오버 리스크 지표</div>
+    </div>
+    <div class="metric-card gold">
+      <div class="metric-label">Total Repo (UST)</div>
+      <div class="metric-value">${fmt(latestRepo)}</div>
+      <div class="metric-sub">UST 담보 Repo 잔액</div>
+    </div>
+    <div class="metric-card ${latestDiverge > 0 ? 'red' : 'green'}">
+      <div class="metric-label">성장 괴리 ΔRepo−ΔNP</div>
+      <div class="metric-value ${latestDiverge > 0 ? 'neg' : 'pos'}">${fmtK(latestDiverge)}</div>
+      <div class="metric-sub">양수: Repo↑ NP↓ 위험</div>
+    </div>
+  `;
+
+  // Historical diagnosis
+  renderHistDiagRepo();
+
+  // Chart 1: Ratio + MA + threshold lines
+  renderRepoRatioChart(s, ratioMA4, n);
+  // Chart 2: Divergence
+  renderRepoDivergeChart(s, deltaRepo, deltaNP, diverge, n);
+  // Chart 3: Maturity mix
+  renderRepoMaturityChart(s, ovPct, n);
+}
+
+function renderRepoRatioChart(s, ratioMA4, n) {
+  const id = 'chart-repo-ratio';
+  destroyChart(id);
+  const ctx = document.getElementById(id).getContext('2d');
+  const labels = s.dates.map(d => d.slice(0,7));
+  const cautionLine = new Array(n).fill(REPO_THRESHOLDS.caution);
+  const dangerLine  = new Array(n).fill(REPO_THRESHOLDS.danger);
+
+  chartInstances[id] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Repo/NP Ratio',
+          data: s.ratio,
+          borderColor: '#f04040',
+          backgroundColor: 'rgba(240,64,64,0.08)',
+          borderWidth: 2,
+          fill: true,
+          pointRadius: 0,
+          tension: 0.2,
+        },
+        {
+          label: '4W MA',
+          data: ratioMA4,
+          borderColor: '#e8a020',
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          borderDash: [4,3],
+          fill: false,
+          pointRadius: 0,
+          tension: 0.3,
+        },
+        {
+          label: '경계 0.7x',
+          data: cautionLine,
+          borderColor: 'rgba(240,192,48,0.5)',
+          backgroundColor: 'transparent',
+          borderWidth: 1,
+          borderDash: [2,4],
+          fill: false,
+          pointRadius: 0,
+        },
+        {
+          label: '위험 1.0x',
+          data: dangerLine,
+          borderColor: 'rgba(240,64,64,0.5)',
+          backgroundColor: 'transparent',
+          borderWidth: 1,
+          borderDash: [2,4],
+          fill: false,
+          pointRadius: 0,
+        },
+      ]
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      interaction: { intersect: false, mode: 'index' },
+      scales: {
+        ...CHART_DEFAULTS.scales,
+        y: {
+          ...CHART_DEFAULTS.scales.y,
+          ticks: {
+            color: '#4a6580',
+            font: { family: 'IBM Plex Mono', size: 11 },
+            callback: v => v.toFixed(2) + 'x'
+          }
+        }
+      }
+    }
+  });
+}
+
+function renderRepoDivergeChart(s, deltaRepo, deltaNP, diverge, n) {
+  const id = 'chart-repo-diverge';
+  destroyChart(id);
+  const ctx = document.getElementById(id).getContext('2d');
+  const labels = s.dates.map(d => d.slice(0,7));
+  const divColors = diverge.map(v => v === null ? 'transparent' : (v > 0 ? 'rgba(240,64,64,0.55)' : 'rgba(38,214,138,0.45)'));
+
+  chartInstances[id] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: '괴리 ΔRepo−ΔNP',
+          data: diverge,
+          backgroundColor: divColors,
+          borderWidth: 0,
+          yAxisID: 'y',
+          order: 3,
+        },
+        {
+          label: 'ΔRepo₁₃w',
+          data: deltaRepo,
+          type: 'line',
+          borderColor: '#f04040',
+          backgroundColor: 'transparent',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          tension: 0.3,
+          yAxisID: 'y',
+          order: 1,
+        },
+        {
+          label: 'ΔNP₁₃w',
+          data: deltaNP,
+          type: 'line',
+          borderColor: '#26d68a',
+          backgroundColor: 'transparent',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          tension: 0.3,
+          yAxisID: 'y',
+          order: 2,
+        },
+      ]
+    },
+    options: { ...CHART_DEFAULTS, interaction: { intersect: false, mode: 'index' } }
+  });
+}
+
+function renderRepoMaturityChart(s, ovPct, n) {
+  const id = 'chart-repo-maturity';
+  destroyChart(id);
+  const ctx = document.getElementById(id).getContext('2d');
+  const labels = s.dates.map(d => d.slice(0,7));
+
+  chartInstances[id] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Overnight Repo',
+          data: s.overnight,
+          backgroundColor: 'rgba(48,184,204,0.55)',
+          borderWidth: 0,
+          yAxisID: 'y',
+          stack: 'stack',
+          order: 2,
+        },
+        {
+          label: 'Term Repo',
+          data: s.term,
+          backgroundColor: 'rgba(144,96,238,0.45)',
+          borderWidth: 0,
+          yAxisID: 'y',
+          stack: 'stack',
+          order: 2,
+        },
+        {
+          label: 'Overnight 비중%',
+          data: ovPct,
+          type: 'line',
+          borderColor: '#f0c030',
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          borderDash: [3,3],
+          fill: false,
+          pointRadius: 0,
+          tension: 0.3,
+          yAxisID: 'y2',
+          order: 1,
+        },
+      ]
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      interaction: { intersect: false, mode: 'index' },
+      scales: {
+        ...CHART_DEFAULTS.scales,
+        y: {
+          ...CHART_DEFAULTS.scales.y,
+          stacked: true,
+          position: 'left',
+          title: { display: true, text: '금액 (M$)', color: '#4a6580', font: { family: 'IBM Plex Mono', size: 11 } }
+        },
+        y2: {
+          position: 'right',
+          grid: { drawOnChartArea: false },
+          min: 0, max: 100,
+          ticks: {
+            color: '#4a6580',
+            font: { family: 'IBM Plex Mono', size: 11 },
+            callback: v => v + '%'
+          },
+          title: { display: true, text: 'Overnight %', color: '#4a6580', font: { family: 'IBM Plex Mono', size: 11 } }
+        }
+      }
+    }
+  });
+}
+
+
+// ─────────────────────────────────────────────
+// BOND VOLATILITY TAB
+// ─────────────────────────────────────────────
+function calcBondVol(values, dates, window=20) {
+  // Daily changes
+  const changes = values.map((v, i) => i === 0 ? null : v - values[i-1]);
+  // Rolling std → annualized bps (×√252 ×100 to convert % → bps)
+  const vol = changes.map((_, i) => {
+    if (i < window) return null;
+    const slice = changes.slice(i - window + 1, i + 1).filter(x => x !== null);
+    if (slice.length < 2) return null;
+    const mean = slice.reduce((s,x) => s+x, 0) / slice.length;
+    const variance = slice.reduce((s,x) => s + (x-mean)**2, 0) / (slice.length-1);
+    return Math.sqrt(variance) * Math.sqrt(252) * 100; // bps annualized
+  });
+  return vol;
+}
+
+function zScore(arr, window=52) {
+  return arr.map((v, i) => {
+    if (v === null) return null;
+    const slice = arr.slice(Math.max(0, i - window), i + 1).filter(x => x !== null);
+    if (slice.length < 4) return null;
+    const mean = slice.reduce((s,x) => s+x, 0) / slice.length;
+    const std  = Math.sqrt(slice.reduce((s,x) => s + (x-mean)**2, 0) / slice.length);
+    return std === 0 ? 0 : (v - mean) / std;
+  });
+}
+
+// Downsample daily → weekly (take last value of each week)
+function dailyToWeekly(dates, values) {
+  const weekMap = {};
+  dates.forEach((d, i) => {
+    if (values[i] === null) return;
+    const weekKey = getWeekKey(d);
+    weekMap[weekKey] = { date: d, value: values[i] };
+  });
+  const keys = Object.keys(weekMap).sort();
+  return {
+    dates:  keys.map(k => weekMap[k].date),
+    values: keys.map(k => weekMap[k].value),
+  };
+}
+function getWeekKey(dateStr) {
+  const d = new Date(dateStr);
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+  const mon = new Date(d.setDate(diff));
+  return mon.toISOString().slice(0,10);
+}
+
+function renderBondVolTab() {
+  const dgs = fredData.dgs10;
+  if (!dgs.dates || dgs.dates.length === 0) {
+    document.getElementById('info-bondvol').textContent = 'DGS10.csv 파일을 업로드하세요';
+    return;
+  }
+
+  // Compute vol on full daily series first
+  const fullVol = calcBondVol(dgs.values, dgs.dates, 20);
+
+  // Slice to activeRange (weeks → approx trading days)
+  const tradingDays = activeRange * 5;
+  const n = dgs.dates.length;
+  const start = Math.max(0, n - tradingDays);
+  const dates  = dgs.dates.slice(start);
+  const yields = dgs.values.slice(start);
+  const vol    = fullVol.slice(start);
+
+  // Latest values
+  const latestYield = yields[yields.length - 1];
+  const latestVol   = vol.filter(x => x !== null).slice(-1)[0];
+  const vol4wAgo    = vol.filter(x => x !== null).slice(-21)[0];
+  const volChange   = latestVol !== undefined && vol4wAgo !== undefined ? latestVol - vol4wAgo : null;
+  const volMA4w     = (() => {
+    const nonNull = vol.filter(x => x !== null);
+    if (nonNull.length < 20) return null;
+    return nonNull.slice(-20).reduce((s,v) => s+v, 0) / 20;
+  })();
+
+  // Thresholds (bps annualized)
+  const VOL_CAUTION = 80, VOL_DANGER = 120;
+
+  let volStatus = 'normal';
+  if (latestVol >= VOL_DANGER) volStatus = 'danger';
+  else if (latestVol >= VOL_CAUTION) volStatus = 'caution';
+
+  const badge = document.getElementById('badge-bondvol');
+  badge.textContent = { normal:'정상 NORMAL', caution:'경계 CAUTION', danger:'위험 DANGER' }[volStatus];
+  badge.className = `status-badge ${volStatus}`;
+  document.getElementById('info-bondvol').innerHTML =
+    `일간 데이터: <span>${dates[0]}</span> ~ <span>${dates[dates.length-1]}</span>  |  ${dates.length}일`;
+
+  const tc = { normal:'green', caution:'yellow', danger:'red' }[volStatus];
+  document.getElementById('metrics-bondvol').innerHTML = `
+    <div class="metric-card gold">
+      <div class="metric-label">10Y 금리 (DGS10)</div>
+      <div class="metric-value">${latestYield !== undefined ? latestYield.toFixed(2)+'%' : '—'}</div>
+      <div class="metric-sub">최신 일간 수익률</div>
+    </div>
+    <div class="metric-card ${tc}">
+      <div class="metric-label">20d Realized Vol</div>
+      <div class="metric-value ${latestVol >= VOL_DANGER ? 'neg' : ''}">${latestVol !== undefined ? latestVol.toFixed(1)+' bps' : '—'}</div>
+      <div class="metric-sub">연율화 (×√252)</div>
+    </div>
+    <div class="metric-card ${volChange !== null && volChange > 0 ? 'red' : 'teal'}">
+      <div class="metric-label">Vol 4주 변화</div>
+      <div class="metric-value ${volChange > 0 ? 'neg' : 'pos'}">${volChange !== null ? (volChange > 0 ? '+' : '') + volChange.toFixed(1)+' bps' : '—'}</div>
+      <div class="metric-sub">상승: 변동성 확대</div>
+    </div>
+    <div class="metric-card blue">
+      <div class="metric-label">Vol 4W MA</div>
+      <div class="metric-value">${volMA4w !== null ? volMA4w.toFixed(1)+' bps' : '—'}</div>
+      <div class="metric-sub">단기 변동성 추세</div>
+    </div>
+    <div class="metric-card purple">
+      <div class="metric-label">경계 / 위험 기준</div>
+      <div class="metric-value">${VOL_CAUTION} / ${VOL_DANGER}</div>
+      <div class="metric-sub">bps 연율화 기준</div>
+    </div>
+  `;
+
+  // Chart 1: Yield (left) + Vol (right)
+  { const id = 'chart-bv-yield'; destroyChart(id);
+    const ctx = document.getElementById(id).getContext('2d');
+    const labels = dates.map(d => d.slice(0,7));
+    chartInstances[id] = new Chart(ctx, {
+      type: 'line',
+      data: { labels, datasets: [
+        { label: 'DGS10 (%)', data: yields, borderColor: '#e8a020', backgroundColor: 'rgba(232,160,32,0.06)', borderWidth: 1.5, fill: true, pointRadius: 0, tension: 0.1, yAxisID: 'y' },
+        { label: '20d Vol (bps)', data: vol, borderColor: '#f04040', backgroundColor: 'transparent', borderWidth: 1.5, borderDash: [3,3], fill: false, pointRadius: 0, tension: 0.3, yAxisID: 'y2' },
+      ]},
+      options: { ...CHART_DEFAULTS, interaction: { intersect: false, mode: 'index' },
+        scales: { ...CHART_DEFAULTS.scales,
+          y:  { ...CHART_DEFAULTS.scales.y, position: 'left',
+                ticks: { ...CHART_DEFAULTS.scales.y.ticks, callback: v => v.toFixed(2)+'%' }},
+          y2: { position: 'right', grid: { drawOnChartArea: false },
+                ticks: { color: '#4a6580', font: { family:'IBM Plex Mono', size:9 }, callback: v => v.toFixed(0)+' bp' },
+                title: { display:true, text:'Vol (bps)', color:'#4a6580', font:{family:'IBM Plex Mono',size:9} }}
+        }
+      }
+    }); }
+
+  // Chart 2: Vol trend + thresholds
+  { const id = 'chart-bv-vol'; destroyChart(id);
+    const ctx = document.getElementById(id).getContext('2d');
+    const labels = dates.map(d => d.slice(0,7));
+    const cL = new Array(vol.length).fill(VOL_CAUTION);
+    const dL = new Array(vol.length).fill(VOL_DANGER);
+    const volColors = vol.map(v => v === null ? 'transparent' : v >= VOL_DANGER ? 'rgba(240,64,64,0.7)' : v >= VOL_CAUTION ? 'rgba(240,192,48,0.65)' : 'rgba(38,214,138,0.55)');
+    chartInstances[id] = new Chart(ctx, {
+      type: 'bar',
+      data: { labels, datasets: [
+        { label: 'Realized Vol (bps)', data: vol, backgroundColor: volColors, borderWidth: 0, yAxisID: 'y' },
+        { label: '경계 80bps', data: cL, type:'line', borderColor:'rgba(240,192,48,0.5)', backgroundColor:'transparent', borderWidth:1, borderDash:[2,4], fill:false, pointRadius:0, yAxisID:'y' },
+        { label: '위험 120bps', data: dL, type:'line', borderColor:'rgba(240,64,64,0.5)', backgroundColor:'transparent', borderWidth:1, borderDash:[2,4], fill:false, pointRadius:0, yAxisID:'y' },
+      ]},
+      options: { ...CHART_DEFAULTS, interaction: { intersect: false, mode: 'index' },
+        scales: { ...CHART_DEFAULTS.scales, y: { ...CHART_DEFAULTS.scales.y, ticks: { ...CHART_DEFAULTS.scales.y.ticks, callback: v => v.toFixed(0)+' bp' }}}
+      }
+    }); }
+
+  // Chart 3: Vol Z-Score vs NP Z-Score (cross signal — need weekly overlap)
+  { const id = 'chart-bv-cross'; destroyChart(id);
+    const ctx = document.getElementById(id).getContext('2d');
+    // Downsample vol to weekly
+    const wVol = dailyToWeekly(dates, vol);
+    const volZ = zScore(wVol.values, 52);
+    // NP z-score — match dates
+    let npZ = null;
+    if (allData.total && allData.total.length > 0) {
+      const npVals = allData.total.map(r => r.value);
+      const npDates = allData.total.map(r => r.date);
+      const rawNpZ = zScore(npVals, 52);
+      // Build lookup
+      const npLookup = {};
+      npDates.forEach((d, i) => { npLookup[d] = rawNpZ[i]; });
+      npZ = wVol.dates.map(d => {
+        // find closest NP date
+        const keys = Object.keys(npLookup).sort();
+        let best = null, bestDiff = Infinity;
+        keys.forEach(k => { const diff = Math.abs(new Date(k) - new Date(d)); if (diff < bestDiff) { bestDiff = diff; best = npLookup[k]; }});
+        return best;
+      });
+    }
+    const labels = wVol.dates.map(d => d.slice(0,7));
+    const datasets = [
+      { label: 'Vol Z-Score', data: volZ, borderColor: '#f04040', backgroundColor: 'transparent', borderWidth: 1.5, pointRadius: 0, tension: 0.3 },
+    ];
+    if (npZ) datasets.push(
+      { label: 'NP Z-Score (역전)', data: npZ.map(v => v !== null ? -v : null), borderColor: '#26d68a', backgroundColor: 'transparent', borderWidth: 1.5, pointRadius: 0, tension: 0.3, borderDash: [3,3] }
+    );
+    datasets.push({ label: '0선', data: new Array(labels.length).fill(0), borderColor:'rgba(200,214,229,0.2)', borderWidth:1, fill:false, pointRadius:0 });
+    chartInstances[id] = new Chart(ctx, {
+      type: 'line', data: { labels, datasets },
+      options: { ...CHART_DEFAULTS, interaction: { intersect: false, mode: 'index' },
+        scales: { ...CHART_DEFAULTS.scales, y: { ...CHART_DEFAULTS.scales.y, ticks: { ...CHART_DEFAULTS.scales.y.ticks, callback: v => v.toFixed(1)+'σ' }}}
+      }
+    }); }
+
+  // Historical diagnosis (call after charts so element is visible)
+  renderHistDiagVol();
+}
+
+// ─────────────────────────────────────────────
+// TGA & LIQUIDITY TAB
+// ─────────────────────────────────────────────
+function renderLiquidityTab() {
+  const res = fredData.reserves;
+  const tga = fredData.tga;
+  const hasRes = res.dates && res.dates.length > 0;
+  const hasTga = tga.dates && tga.dates.length > 0;
+  if (!hasRes && !hasTga) {
+    document.getElementById('info-liquidity').textContent = 'WTREGEN + WRESBAL CSV를 업로드하세요';
+    return;
+  }
+
+  // Align dates — use intersection
+  const resMap = {}; res.dates.forEach((d,i) => resMap[d] = res.values[i]);
+  const tgaMap = {}; tga.dates.forEach((d,i) => tgaMap[d] = tga.values[i]);
+  const allDates = [...new Set([...res.dates, ...tga.dates])].sort();
+  // Slice to activeRange weeks
+  const sliceDates = allDates.slice(Math.max(0, allDates.length - activeRange));
+  const resV = sliceDates.map(d => resMap[d] !== undefined ? resMap[d] : null);
+  const tgaV = sliceDates.map(d => tgaMap[d] !== undefined ? tgaMap[d] : null);
+  const netLiq = sliceDates.map((d, i) => resV[i] !== null && tgaV[i] !== null ? resV[i] - tgaV[i] : null);
+
+  // 4-week deltas
+  const delta4 = arr => arr.map((v, i) => i >= 4 && v !== null && arr[i-4] !== null ? v - arr[i-4] : null);
+  const dRes = delta4(resV);
+  const dTga = delta4(tgaV);
+  const netMA = calcMA(netLiq.map(v => v === null ? 0 : v), 4).map((v,i) => netLiq[i] === null ? null : v);
+
+  // Latest values
+  const latestRes   = resV.filter(x => x !== null).slice(-1)[0];
+  const latestTga   = tgaV.filter(x => x !== null).slice(-1)[0];
+  const latestNet   = netLiq.filter(x => x !== null).slice(-1)[0];
+  const latestDRes  = dRes.filter(x => x !== null).slice(-1)[0];
+  const latestDTga  = dTga.filter(x => x !== null).slice(-1)[0];
+  const latestDNet  = delta4(netLiq).filter(x => x !== null).slice(-1)[0];
+
+  // Status: danger if net liq falling fast
+  let liqStatus = 'normal';
+  if (latestDNet !== null && latestDNet < -200) liqStatus = 'danger';
+  else if (latestDNet !== null && latestDNet < -50) liqStatus = 'caution';
+
+  const badge = document.getElementById('badge-liquidity');
+  badge.textContent = { normal:'정상 NORMAL', caution:'경계 CAUTION', danger:'위험 DANGER' }[liqStatus];
+  badge.className = `status-badge ${liqStatus}`;
+  document.getElementById('info-liquidity').innerHTML =
+    `데이터: <span>${sliceDates[0]}</span> ~ <span>${sliceDates[sliceDates.length-1]}</span>`;
+
+  const fmtB = v => v !== null && v !== undefined ? (v >= 0 ? '' : '') + (v/1).toFixed(0)+'B$' : '—';
+  const fmtDB = v => v !== null && v !== undefined ? (v > 0 ? '+' : '') + v.toFixed(0)+'B$' : '—';
+  const tc = { normal:'green', caution:'yellow', danger:'red' }[liqStatus];
+  document.getElementById('metrics-liquidity').innerHTML = `
+    <div class="metric-card ${latestDNet !== null && latestDNet < 0 ? 'red' : 'green'}">
+      <div class="metric-label">순유동성 (Net Liq)</div>
+      <div class="metric-value">${fmtB(latestNet)}</div>
+      <div class="metric-sub">Reserves − TGA</div>
+    </div>
+    <div class="metric-card ${tc}">
+      <div class="metric-label">ΔNet Liq 4w</div>
+      <div class="metric-value ${latestDNet < 0 ? 'neg' : 'pos'}">${fmtDB(latestDNet)}</div>
+      <div class="metric-sub">음수: 유동성 흡수</div>
+    </div>
+    <div class="metric-card blue">
+      <div class="metric-label">준비금 Reserves</div>
+      <div class="metric-value">${fmtB(latestRes)}</div>
+      <div class="metric-sub">ΔRes 4w: ${fmtDB(latestDRes)}</div>
+    </div>
+    <div class="metric-card gold">
+      <div class="metric-label">TGA 잔액</div>
+      <div class="metric-value">${fmtB(latestTga)}</div>
+      <div class="metric-sub">ΔTGA 4w: ${fmtDB(latestDTga)}</div>
+    </div>
+    <div class="metric-card teal">
+      <div class="metric-label">ΔReserves 4w</div>
+      <div class="metric-value ${latestDRes < 0 ? 'neg' : 'pos'}">${fmtDB(latestDRes)}</div>
+      <div class="metric-sub">음수: 준비금 감소</div>
+    </div>
+  `;
+
+  const labels = sliceDates.map(d => d.slice(0,7));
+
+  // TGA chart
+  { const id = 'chart-liq-tga'; destroyChart(id);
+    const ctx = document.getElementById(id).getContext('2d');
+    chartInstances[id] = new Chart(ctx, {
+      type: 'line',
+      data: { labels, datasets: [
+        { label:'TGA (B$)', data: tgaV, borderColor:'#3090e0', backgroundColor:'rgba(48,144,224,0.07)', borderWidth:1.5, fill:true, pointRadius:0, tension:0.2, yAxisID:'y' },
+        { label:'ΔTGA 4w', data: dTga, type:'bar', backgroundColor: dTga.map(v => v === null ? 'transparent' : v < 0 ? 'rgba(38,214,138,0.5)' : 'rgba(240,192,48,0.5)'), borderWidth:0, yAxisID:'y2' },
+      ]},
+      options: { ...CHART_DEFAULTS, interaction: { intersect:false, mode:'index' },
+        scales: { ...CHART_DEFAULTS.scales,
+          y:  { ...CHART_DEFAULTS.scales.y, position:'left', title:{display:true,text:'B$',color:'#4a6580',font:{family:'IBM Plex Mono',size:9}} },
+          y2: { position:'right', grid:{drawOnChartArea:false}, ticks:{color:'#4a6580',font:{family:'IBM Plex Mono',size:9},callback:v=>v.toFixed(0)+'B'}, title:{display:true,text:'Δ4w',color:'#4a6580',font:{family:'IBM Plex Mono',size:9}} }
+        }
+      }
+    }); }
+
+  // Reserves chart
+  { const id = 'chart-liq-res'; destroyChart(id);
+    const ctx = document.getElementById(id).getContext('2d');
+    chartInstances[id] = new Chart(ctx, {
+      type: 'line',
+      data: { labels, datasets: [
+        { label:'Reserves (B$)', data: resV, borderColor:'#26d68a', backgroundColor:'rgba(38,214,138,0.07)', borderWidth:1.5, fill:true, pointRadius:0, tension:0.2, yAxisID:'y' },
+        { label:'ΔRes 4w', data: dRes, type:'bar', backgroundColor: dRes.map(v => v===null?'transparent':v>=0?'rgba(38,214,138,0.5)':'rgba(240,64,64,0.5)'), borderWidth:0, yAxisID:'y2' },
+      ]},
+      options: { ...CHART_DEFAULTS, interaction: { intersect:false, mode:'index' },
+        scales: { ...CHART_DEFAULTS.scales,
+          y:  { ...CHART_DEFAULTS.scales.y, position:'left' },
+          y2: { position:'right', grid:{drawOnChartArea:false}, ticks:{color:'#4a6580',font:{family:'IBM Plex Mono',size:9},callback:v=>v.toFixed(0)+'B'} }
+        }
+      }
+    }); }
+
+  // Net Liquidity chart
+  { const id = 'chart-liq-net'; destroyChart(id);
+    const ctx = document.getElementById(id).getContext('2d');
+    const netColors = netLiq.map(v => v === null ? 'transparent' : 'rgba(232,160,32,0.08)');
+    chartInstances[id] = new Chart(ctx, {
+      type: 'line',
+      data: { labels, datasets: [
+        { label:'Net Liquidity (B$)', data:netLiq, borderColor:'#e8a020', backgroundColor:'rgba(232,160,32,0.08)', borderWidth:2, fill:true, pointRadius:0, tension:0.2 },
+        { label:'4W MA', data:netMA, borderColor:'#3090e0', backgroundColor:'transparent', borderWidth:1.5, borderDash:[4,3], fill:false, pointRadius:0, tension:0.3 },
+      ]},
+      options: { ...CHART_DEFAULTS, interaction: { intersect:false, mode:'index' } }
+    }); }
+
+  // Historical diagnosis
+  renderHistDiagLiq();
+}
+
+// ─────────────────────────────────────────────
+// COMPOSITE WARNING TAB
+// ─────────────────────────────────────────────
+function renderCompositeTab() {
+  // Collect latest signal values from all tabs
+  const signals = [];
+
+  // Signal 1: NP 3m delta
+  let sig1 = null;
+  if (allData.total && allData.total.length >= 14) {
+    const vals = allData.total.map(r => r.value);
+    const n = vals.length;
+    const d3m = vals[n-1] - vals[n-14];
+    const d3mprev = n >= 27 ? vals[n-14] - vals[n-27] : null;
+    const accel = d3mprev !== null ? d3m - d3mprev : null;
+    let s = 'normal';
+    if (d3m < 0 && accel !== null && accel < 0) s = 'danger';
+    else if (d3m < 0) s = 'caution';
+    sig1 = { label:'NP 3m 변화율', value: (d3m/1000).toFixed(1)+'B', unit:'ΔNP₃ₘ', status:s,
+      detail: d3m < 0 ? (accel < 0 ? '하락 + 가속도↓' : '하락 중') : '유지/상승' };
+  }
+
+  // Signal 2: Repo ratio
+  let sig2 = null;
+  if (repoData.ratio && repoData.ratio.length > 0) {
+    const r = repoData.ratio.filter(x => x !== null).slice(-1)[0];
+    const ov = repoData.overnight && repoData.overnight.length > 0
+      ? repoData.overnight.filter(x => x !== null).slice(-1)[0] : null;
+    const term = repoData.term && repoData.term.length > 0
+      ? repoData.term.filter(x => x !== null).slice(-1)[0] : null;
+    const ovPct = ov !== null && term !== null && (ov+term) > 0 ? ov/(ov+term)*100 : null;
+    let s = 'normal';
+    if (r >= 1.0 || ovPct >= 93) s = 'danger';
+    else if (r >= 0.7 || ovPct >= 85) s = 'caution';
+    sig2 = { label:'Repo 의존도', value: r.toFixed(2)+'x', unit:'Repo/NP', status:s,
+      detail: ovPct !== null ? `Overnight ${ovPct.toFixed(1)}%` : '' };
+  }
+
+  // Signal 3: Bond Vol
+  let sig3 = null;
+  if (fredData.dgs10.values.length > 25) {
+    const fullVol = calcBondVol(fredData.dgs10.values, fredData.dgs10.dates, 20);
+    const latestVol = fullVol.filter(x => x !== null).slice(-1)[0];
+    let s = 'normal';
+    if (latestVol >= 120) s = 'danger';
+    else if (latestVol >= 80) s = 'caution';
+    sig3 = { label:'국채 변동성', value: latestVol.toFixed(1)+' bps', unit:'20d Realized Vol', status:s,
+      detail: latestVol >= 120 ? '극도 변동성' : latestVol >= 80 ? '변동성 확대' : '안정' };
+  }
+
+  // Signal 4: Net Liquidity trend
+  let sig4 = null;
+  if (fredData.reserves.values.length > 4 && fredData.tga.values.length > 4) {
+    const resV = fredData.reserves.values;
+    const tgaV = fredData.tga.values;
+    // align on shorter
+    const minLen = Math.min(resV.length, tgaV.length);
+    const netLast = resV.slice(-minLen).map((v, i) => v - tgaV[tgaV.length - minLen + i]);
+    const n = netLast.length;
+    const dNet = n >= 5 ? netLast[n-1] - netLast[n-5] : null;
+    let s = 'normal';
+    if (dNet !== null && dNet < -200) s = 'danger';
+    else if (dNet !== null && dNet < -50) s = 'caution';
+    sig4 = { label:'순유동성 추세', value: dNet !== null ? (dNet > 0 ? '+' : '') + dNet.toFixed(0)+'B$' : '—',
+      unit:'ΔNet Liq 4w', status:s, detail: dNet < -200 ? '급속 흡수' : dNet < -50 ? '완만 흡수' : '안정' };
+  }
+
+  const allSigs = [sig1, sig2, sig3, sig4].filter(x => x !== null);
+  const dangerCount  = allSigs.filter(s => s.status === 'danger').length;
+  const cautionCount = allSigs.filter(s => s.status === 'caution').length;
+  const totalAlert = dangerCount + cautionCount * 0.5;
+
+  let compStatus = 'normal';
+  if (dangerCount >= 2 || totalAlert >= 2) compStatus = 'danger';
+  else if (dangerCount >= 1 || cautionCount >= 2) compStatus = 'caution';
+
+  const badge = document.getElementById('badge-composite');
+  const scoreLabel = dangerCount >= 2 ? `위험 DANGER — ${dangerCount}개 위험 신호 동시 발화` :
+                     compStatus === 'caution' ? `경계 CAUTION — ${cautionCount}개 경계 신호` : '정상 NORMAL';
+  badge.textContent = scoreLabel;
+  badge.className = `status-badge ${compStatus}`;
+
+  // Signal cards
+  const statusIcon = { normal:'🟢', caution:'🟡', danger:'🔴' };
+  const statusBorder = { normal:'var(--green)', caution:'var(--yellow)', danger:'var(--red2)' };
+  const cardHtml = [sig1, sig2, sig3, sig4].map((s, i) => {
+    if (!s) {
+      const labels = ['NP 추세', 'Repo 의존도', '국채 변동성', '순유동성'];
+      return `<div class="metric-card" style="border-top:2px solid var(--border);opacity:0.4">
+        <div class="metric-label">${labels[i]}</div>
+        <div class="metric-value" style="font-size:14px;color:var(--text3)">데이터 없음</div>
+      </div>`;
+    }
+    return `<div class="metric-card" style="border-top:2px solid ${statusBorder[s.status]}">
+      <div class="metric-label">${s.label}</div>
+      <div class="metric-value" style="font-size:18px">${statusIcon[s.status]} ${s.value}</div>
+      <div class="metric-sub">${s.unit}</div>
+      <div style="margin-top:6px;font-size:12px;color:var(--text2)">${s.detail}</div>
+    </div>`;
+  }).join('');
+  document.getElementById('signal-cards').innerHTML = cardHtml;
+
+  // Score bar
+  const scoreW = (totalAlert / 4) * 100;
+  const scoreColor = compStatus === 'danger' ? 'var(--red2)' : compStatus === 'caution' ? 'var(--yellow2)' : 'var(--green2)';
+  document.getElementById('composite-score-bar').innerHTML = `
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:12px 16px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+        <span style="font-family:IBM Plex Mono;font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:1px">복합 위험 스코어</span>
+        <span style="font-family:IBM Plex Mono;font-size:13px;color:${scoreColor};font-weight:600">${totalAlert.toFixed(1)} / 4.0</span>
+      </div>
+      <div style="background:var(--bg3);border-radius:2px;height:6px;overflow:hidden">
+        <div style="background:${scoreColor};width:${Math.min(scoreW,100)}%;height:100%;border-radius:2px;transition:width 0.5s"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:6px;font-family:IBM Plex Mono;font-size:11px;color:var(--text3)">
+        <span>0 — 정상</span><span>1 — 경계</span><span>2 — 위험</span><span>4 — 최고경계</span>
+      </div>
+    </div>`;
+
+  // ── Historical percentile stress scores for radar + stage banner ──
+  const sigPcts = { np: null, repo: null, vol: null, liq: null };
+
+  // NP: percentile of current LEVEL — low = stress (invert)
+  if (allData.total && allData.total.length >= 14) {
+    const vals = allData.total.map(r => r.value);
+    const curV = vals[vals.length - 1];
+    const pct  = percentileRank(curV, vals);
+    sigPcts.np = pct !== null ? 100 - pct : null;  // invert: low NP = high stress
+  }
+
+  // Repo: percentile of current ratio — high = stress
+  if (repoData.ratio && repoData.ratio.length > 0) {
+    const valid = repoData.ratio.filter(x => x !== null);
+    const cur   = valid[valid.length - 1];
+    sigPcts.repo = percentileRank(cur, valid);
+  }
+
+  // Vol: percentile of current 20d vol — high = stress
+  if (fredData.dgs10.values.length > 25) {
+    const fullVol = calcBondVol(fredData.dgs10.values, fredData.dgs10.dates, 20);
+    const validVol = fullVol.filter(x => x !== null);
+    const curVol   = validVol[validVol.length - 1];
+    sigPcts.vol = percentileRank(curVol, validVol);
+  }
+
+  // Liq: percentile of current Net Liq — low = stress (invert)
+  if (fredData.reserves.values.length > 4 && fredData.tga.values.length > 4) {
+    const minLen = Math.min(fredData.reserves.values.length, fredData.tga.values.length);
+    const netArr = fredData.reserves.values.slice(-minLen).map(
+      (v, i) => v - fredData.tga.values[fredData.tga.values.length - minLen + i]
+    );
+    const curNet = netArr[netArr.length - 1];
+    const pct    = percentileRank(curNet, netArr);
+    sigPcts.liq  = pct !== null ? 100 - pct : null;  // invert: low liq = high stress
+  }
+
+  // Render stage banner and radar chart
+  renderStageBanner(sigPcts);
+  renderRadarChart(sigPcts);
+
+  // Timeline chart: need weekly Z-scores of all 4 signals
+  renderCompositeTimeline();
+}
+
+function renderCompositeTimeline() {
+  // Build weekly aligned dataset of Z-scores
+  // NP Z-score
+  let npDates = [], npZ = [];
+  if (allData.total && allData.total.length > 0) {
+    const vals = allData.total.map(r => r.value);
+    npDates = allData.total.map(r => r.date);
+    npZ = zScore(vals, 52);
+  }
+
+  // Repo ratio Z-score
+  let repoDates2 = [], repoZ = [];
+  if (repoData.ratio && repoData.ratio.length > 0) {
+    repoDates2 = repoData.dates;
+    repoZ = zScore(repoData.ratio.map(v => v === null ? 0 : v), 52);
+  }
+
+  // Bond vol — weekly
+  let volDates = [], volZ = [];
+  if (fredData.dgs10.values.length > 25) {
+    const fullVol = calcBondVol(fredData.dgs10.values, fredData.dgs10.dates, 20);
+    const wVol = dailyToWeekly(fredData.dgs10.dates, fullVol);
+    volDates = wVol.dates;
+    volZ = zScore(wVol.values, 52);
+  }
+
+  // Net liquidity Z-score
+  let liqDates = [], liqZ = [];
+  if (fredData.reserves.values.length > 4 && fredData.tga.values.length > 4) {
+    const resMap = {}; fredData.reserves.dates.forEach((d,i) => resMap[d] = fredData.reserves.values[i]);
+    const tgaMap = {}; fredData.tga.dates.forEach((d,i) => tgaMap[d] = fredData.tga.values[i]);
+    const allD = [...new Set([...fredData.reserves.dates, ...fredData.tga.dates])].sort();
+    const netV = allD.map(d => resMap[d] !== undefined && tgaMap[d] !== undefined ? resMap[d] - tgaMap[d] : null);
+    liqDates = allD;
+    liqZ = zScore(netV.map(v => v === null ? 0 : v), 52).map((v,i) => netV[i] === null ? null : -v); // invert: lower liq = higher z
+  }
+
+  // Use NP dates as base timeline (weekly), slice to activeRange
+  const baseDates = npDates.length > 0 ? npDates : (repoDates2.length > 0 ? repoDates2 : volDates);
+  if (baseDates.length === 0) return;
+  const startIdx = Math.max(0, baseDates.length - activeRange);
+  const slicedDates = baseDates.slice(startIdx);
+
+  // Build lookups
+  const buildLookup = (dates, vals) => { const m = {}; dates.forEach((d,i) => m[d] = vals[i]); return m; };
+  const npL  = buildLookup(npDates, npZ);
+  const repL = buildLookup(repoDates2, repoZ);
+  const volL = buildLookup(volDates, volZ);
+  const liqL = buildLookup(liqDates, liqZ);
+
+  const getNear = (lookup, date) => {
+    if (lookup[date] !== undefined) return lookup[date];
+    const keys = Object.keys(lookup).sort();
+    let best = null, bestDiff = Infinity;
+    keys.forEach(k => { const d = Math.abs(new Date(k) - new Date(date)); if (d < bestDiff && d < 7*86400000*3) { bestDiff = d; best = lookup[k]; }});
+    return best;
+  };
+
+  const npZs   = slicedDates.map(d => getNear(npL, d));
+  const repZs  = slicedDates.map(d => getNear(repL, d));
+  const volZs  = slicedDates.map(d => getNear(volL, d));
+  const liqZs  = slicedDates.map(d => getNear(liqL, d));
+
+  // Score per week: count signals > 1σ
+  const scoreArr = slicedDates.map((d, i) => {
+    let score = 0;
+    if (npZs[i]  !== null && -npZs[i]  > 1) score++;  // NP: negative z = danger
+    if (repZs[i] !== null && repZs[i]  > 1) score++;
+    if (volZs[i] !== null && volZs[i]  > 1) score++;
+    if (liqZs[i] !== null && liqZs[i]  > 1) score++;
+    return score;
+  });
+
+  const labels = slicedDates.map(d => d.slice(0,7));
+
+  // Chart: timeline
+  { const id = 'chart-comp-timeline'; destroyChart(id);
+    const ctx = document.getElementById(id).getContext('2d');
+    const datasets = [];
+    if (npZs.some(v => v !== null))  datasets.push({ label:'NP 추세 (Z, 역전)', data:npZs.map(v=>v!==null?-v:null), borderColor:'#26d68a', backgroundColor:'transparent', borderWidth:1.5, pointRadius:0, tension:0.3, fill:false });
+    if (repZs.some(v => v !== null)) datasets.push({ label:'Repo 의존도 (Z)', data:repZs, borderColor:'#f04040', backgroundColor:'transparent', borderWidth:1.5, pointRadius:0, tension:0.3, fill:false });
+    if (volZs.some(v => v !== null)) datasets.push({ label:'Bond Vol (Z)', data:volZs, borderColor:'#e8a020', backgroundColor:'transparent', borderWidth:1.5, pointRadius:0, tension:0.3, fill:false });
+    if (liqZs.some(v => v !== null)) datasets.push({ label:'유동성 감소 (Z)', data:liqZs, borderColor:'#3090e0', backgroundColor:'transparent', borderWidth:1.5, pointRadius:0, tension:0.3, fill:false });
+    // Danger zone fill: when score >= 2, highlight background
+    const dangerBg = scoreArr.map(s => s >= 2 ? 'rgba(240,64,64,0.08)' : 'transparent');
+    datasets.push({ label:'0선', data:new Array(labels.length).fill(0), borderColor:'rgba(200,214,229,0.15)', borderWidth:1, fill:false, pointRadius:0 });
+    datasets.push({ label:'위험선 1σ', data:new Array(labels.length).fill(1), borderColor:'rgba(240,192,48,0.3)', borderWidth:1, borderDash:[2,4], fill:false, pointRadius:0 });
+    chartInstances[id] = new Chart(ctx, {
+      type: 'line', data: { labels, datasets },
+      options: { ...CHART_DEFAULTS, interaction: { intersect:false, mode:'index' },
+        scales: { ...CHART_DEFAULTS.scales, y: { ...CHART_DEFAULTS.scales.y, ticks: { ...CHART_DEFAULTS.scales.y.ticks, callback: v => v.toFixed(1)+'σ' }}}
+      }
+    }); }
+
+  // Chart: score bars
+  { const id = 'chart-comp-score'; destroyChart(id);
+    const ctx = document.getElementById(id).getContext('2d');
+    const scoreColors = scoreArr.map(s => s >= 3 ? 'rgba(240,64,64,0.8)' : s >= 2 ? 'rgba(240,64,64,0.55)' : s >= 1 ? 'rgba(240,192,48,0.6)' : 'rgba(38,214,138,0.4)');
+    chartInstances[id] = new Chart(ctx, {
+      type: 'bar', data: { labels, datasets: [{ label:'활성 신호 수', data:scoreArr, backgroundColor:scoreColors, borderWidth:0 }]},
+      options: { ...CHART_DEFAULTS, interaction: { intersect:false, mode:'index' },
+        scales: { ...CHART_DEFAULTS.scales, y: { ...CHART_DEFAULTS.scales.y, min:0, max:4, ticks: { stepSize:1, color:'#4a6580', font:{family:'IBM Plex Mono',size:9}, callback:v=>v+'개' }}}
+      }
+    }); }
+
+  // Chart: histogram of score distribution
+  { const id = 'chart-comp-hist'; destroyChart(id);
+    const ctx = document.getElementById(id).getContext('2d');
+    const hist = [0,1,2,3,4].map(s => scoreArr.filter(x => x === s).length);
+    const histColors = ['rgba(38,214,138,0.6)','rgba(240,192,48,0.5)','rgba(240,64,64,0.5)','rgba(240,64,64,0.7)','rgba(192,0,0,0.8)'];
+    chartInstances[id] = new Chart(ctx, {
+      type: 'bar',
+      data: { labels:['0 정상','1 경계','2 위험','3 고위험','4 최고경계'],
+              datasets:[{ label:'주 수 (빈도)', data:hist, backgroundColor:histColors, borderWidth:0 }]},
+      options: { ...CHART_DEFAULTS, interaction: { intersect:false, mode:'index' },
+        scales: { ...CHART_DEFAULTS.scales, y: { ...CHART_DEFAULTS.scales.y, ticks: { ...CHART_DEFAULTS.scales.y.ticks, callback:v=>v+'주' }}}
+      }
+    }); }
+}
+
+
+// ─────────────────────────────────────────────
+// HISTORICAL DIAGNOSIS UTILITIES
+// ─────────────────────────────────────────────
+
+// Compute percentile rank of `val` in array `hist` (0–100)
+function percentileRank(val, hist) {
+  if (!hist || hist.length === 0) return null;
+  const valid = hist.filter(x => x !== null && !isNaN(x));
+  if (valid.length === 0) return null;
+  const below = valid.filter(x => x < val).length;
+  return Math.round((below / valid.length) * 100);
+}
+
+// Rolling percentile bands: for each point, compute p10/p25/p50/p75/p90 over lookback window
+function rollingBands(arr, window) {
+  return arr.map((_, i) => {
+    const start = Math.max(0, i - window + 1);
+    const slice = arr.slice(start, i + 1).filter(x => x !== null).sort((a,b) => a - b);
+    if (slice.length < 4) return null;
+    const pct = p => slice[Math.floor((p/100) * (slice.length - 1))];
+    return { p10: pct(10), p25: pct(25), p50: pct(50), p75: pct(75), p90: pct(90) };
+  });
+}
+
+// Build historical averages for a value array with dates
+function buildHistStats(vals, dates, currentVal) {
+  if (!vals || vals.length === 0) return null;
+  const now = new Date(dates[dates.length - 1]);
+  const msPerYear = 365.25 * 24 * 3600 * 1000;
+
+  const avg = (arr) => {
+    const v = arr.filter(x => x !== null);
+    return v.length ? v.reduce((s,x) => s+x, 0) / v.length : null;
+  };
+
+  const filterYears = (y) => vals.filter((v, i) => {
+    if (v === null) return false;
+    const diff = (now - new Date(dates[i])) / msPerYear;
+    return diff <= y;
+  });
+
+  const allValid = vals.filter(x => x !== null);
+  const pct = percentileRank(currentVal, allValid);
+
+  return {
+    current: currentVal,
+    avg1y:   avg(filterYears(1)),
+    avg2y:   avg(filterYears(2)),
+    avg5y:   avg(filterYears(5)),
+    avgAll:  avg(allValid),
+    min:     Math.min(...allValid),
+    max:     Math.max(...allValid),
+    pct:     pct,
+    count:   allValid.length,
+  };
+}
+
+// Percentile bar color
+function pctColor(pct, invert=false) {
+  // invert=true: high pct = danger (e.g. Repo ratio, Vol)
+  // invert=false: high pct = good (e.g. NP level)
+  const stress = invert ? pct : (100 - pct);
+  if (stress >= 80) return '#f04040';
+  if (stress >= 60) return '#f0c030';
+  return '#26d68a';
+}
+
+function pctLabel(pct) {
+  if (pct === null) return '—';
+  if (pct >= 90) return `${pct}번째 %ile ▲ 역사적 최고권`;
+  if (pct >= 75) return `${pct}번째 %ile ↑ 높음`;
+  if (pct >= 50) return `${pct}번째 %ile → 보통`;
+  if (pct >= 25) return `${pct}번째 %ile ↓ 낮음`;
+  return `${pct}번째 %ile ▼ 역사적 최저권`;
+}
+
+// Render hist-diagnosis block for NP tabs
+function renderHistDiagNP(key, allValues, allDates, currentVal, currentD3m) {
+  const el = document.getElementById(`hist-${key}`);
+  if (!el || !allValues || allValues.length < 20) return;
+
+  const stats = buildHistStats(allValues, allDates, currentVal);
+  if (!stats) return;
+
+  // Also build stats for d3m
+  const d3mAll = allValues.map((v, i) => i >= 13 ? v - allValues[i-13] : null);
+  const d3mStats = buildHistStats(d3mAll.filter(v => v !== null), allDates.slice(13), currentD3m);
+
+  const fmtV = v => v === null ? '—' : fmt(v);
+
+  el.innerHTML = `
+    <div class="hist-diag-header">
+      <span class="hist-diag-title">📊 역사적 위치 진단</span>
+      <span style="font-family:IBM Plex Mono;font-size:11px;color:var(--text3)">${stats.count}주 데이터 기준 (${allDates[0]} ~ ${allDates[allDates.length-1]})</span>
+    </div>
+    <div class="hist-diag-body">
+      <div class="hist-diag-left">
+        <div class="pct-bar-wrap">
+          <div class="pct-bar-label">
+            <span class="pct-bar-name">현재 포지션 수준</span>
+            <span class="pct-bar-val" style="color:${pctColor(stats.pct, false)}">${pctLabel(stats.pct)}</span>
+          </div>
+          <div class="pct-bar-track">
+            <div class="pct-bar-fill" style="width:${stats.pct}%;background:${pctColor(stats.pct, false)}"></div>
+            <div class="pct-bar-marker" style="left:25%"></div>
+            <div class="pct-bar-marker" style="left:75%"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:3px;font-family:IBM Plex Mono;font-size:10px;color:var(--text3)">
+            <span>MIN ${fmtV(stats.min)}</span><span>P25</span><span>P75</span><span>MAX ${fmtV(stats.max)}</span>
+          </div>
+        </div>
+        <div class="pct-bar-wrap" style="margin-top:10px">
+          <div class="pct-bar-label">
+            <span class="pct-bar-name">ΔNP₃ₘ 변화율 위치</span>
+            <span class="pct-bar-val" style="color:${d3mStats ? pctColor(d3mStats.pct, false) : 'var(--text3)'}">${d3mStats ? pctLabel(d3mStats.pct) : '—'}</span>
+          </div>
+          <div class="pct-bar-track">
+            <div class="pct-bar-fill" style="width:${d3mStats ? d3mStats.pct : 0}%;background:${d3mStats ? pctColor(d3mStats.pct, false) : 'var(--border)'}"></div>
+            <div class="pct-bar-marker" style="left:50%"></div>
+          </div>
+          <div style="margin-top:3px;font-family:IBM Plex Mono;font-size:10px;color:var(--text3)">50번째 %ile = 0선 (증감 없음 기준)</div>
+        </div>
+      </div>
+      <div class="hist-diag-right">
+        <table class="hist-table">
+          <thead><tr>
+            <th>기간</th><th>평균 포지션</th><th>현재 대비</th>
+          </tr></thead>
+          <tbody>
+            <tr class="current-row"><td>현재</td><td>${fmtV(stats.current)}</td><td>—</td></tr>
+            <tr><td>1년 평균</td><td>${fmtV(stats.avg1y)}</td><td style="color:${stats.avg1y && stats.current > stats.avg1y ? '#26d68a' : '#f04040'}">${stats.avg1y ? (stats.current > stats.avg1y ? '▲' : '▼') + ' ' + fmt(Math.abs(stats.current - stats.avg1y)) : '—'}</td></tr>
+            <tr><td>2년 평균</td><td>${fmtV(stats.avg2y)}</td><td style="color:${stats.avg2y && stats.current > stats.avg2y ? '#26d68a' : '#f04040'}">${stats.avg2y ? (stats.current > stats.avg2y ? '▲' : '▼') + ' ' + fmt(Math.abs(stats.current - stats.avg2y)) : '—'}</td></tr>
+            <tr><td>5년 평균</td><td>${fmtV(stats.avg5y)}</td><td style="color:${stats.avg5y && stats.current > stats.avg5y ? '#26d68a' : '#f04040'}">${stats.avg5y ? (stats.current > stats.avg5y ? '▲' : '▼') + ' ' + fmt(Math.abs(stats.current - stats.avg5y)) : '—'}</td></tr>
+            <tr><td>전체 평균</td><td>${fmtV(stats.avgAll)}</td><td style="color:${stats.avgAll && stats.current > stats.avgAll ? '#26d68a' : '#f04040'}">${stats.avgAll ? (stats.current > stats.avgAll ? '▲' : '▼') + ' ' + fmt(Math.abs(stats.current - stats.avgAll)) : '—'}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+// Render hist-diagnosis for Repo tab
+function renderHistDiagRepo() {
+  const el = document.getElementById('hist-repo');
+  if (!el || !repoData.ratio || repoData.ratio.length < 20) return;
+
+  const validRatio = repoData.ratio.filter(x => x !== null);
+  const curRatio   = validRatio.slice(-1)[0];
+  const stats      = buildHistStats(repoData.ratio, repoData.dates, curRatio);
+  if (!stats) return;
+
+  const ovPctArr = repoData.overnight.map((v, i) => {
+    const t = (v||0) + (repoData.term[i]||0);
+    return t > 0 ? v/t*100 : null;
+  });
+  const curOvPct = ovPctArr.filter(x => x !== null).slice(-1)[0];
+  const ovStats  = buildHistStats(ovPctArr, repoData.dates, curOvPct);
+
+  el.innerHTML = `
+    <div class="hist-diag-header">
+      <span class="hist-diag-title">📊 역사적 위치 진단</span>
+      <span style="font-family:IBM Plex Mono;font-size:11px;color:var(--text3)">${repoData.dates[0]} ~ ${repoData.dates[repoData.dates.length-1]}</span>
+    </div>
+    <div class="hist-diag-body">
+      <div class="hist-diag-left">
+        <div class="pct-bar-wrap">
+          <div class="pct-bar-label">
+            <span class="pct-bar-name">Repo 의존도 비율</span>
+            <span class="pct-bar-val" style="color:${pctColor(stats.pct, true)}">${pctLabel(stats.pct)} (높을수록 위험)</span>
+          </div>
+          <div class="pct-bar-track">
+            <div class="pct-bar-fill" style="width:${stats.pct}%;background:${pctColor(stats.pct, true)}"></div>
+            <div class="pct-bar-marker" style="left:70%"></div>
+            <div class="pct-bar-marker" style="left:90%"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:3px;font-family:IBM Plex Mono;font-size:10px;color:var(--text3)">
+            <span>MIN ${stats.min.toFixed(2)}x</span><span>│P70</span><span>P90│</span><span>MAX ${stats.max.toFixed(2)}x</span>
+          </div>
+        </div>
+        <div class="pct-bar-wrap" style="margin-top:10px">
+          <div class="pct-bar-label">
+            <span class="pct-bar-name">Overnight 비중 %</span>
+            <span class="pct-bar-val" style="color:${ovStats ? pctColor(ovStats.pct, true) : 'var(--text3)'}">${ovStats ? pctLabel(ovStats.pct) : '—'}</span>
+          </div>
+          <div class="pct-bar-track">
+            <div class="pct-bar-fill" style="width:${ovStats ? ovStats.pct : 0}%;background:${ovStats ? pctColor(ovStats.pct, true) : 'var(--border)'}"></div>
+            <div class="pct-bar-marker" style="left:85%"></div>
+          </div>
+          <div style="margin-top:3px;font-family:IBM Plex Mono;font-size:10px;color:var(--text3)">P85 = 경계선 (Overnight 85%+)</div>
+        </div>
+      </div>
+      <div class="hist-diag-right">
+        <table class="hist-table">
+          <thead><tr><th>기간</th><th>평균 Ratio</th><th>평균 O/N%</th></tr></thead>
+          <tbody>
+            <tr class="current-row"><td>현재</td><td>${curRatio.toFixed(2)}x</td><td>${curOvPct ? curOvPct.toFixed(1)+'%' : '—'}</td></tr>
+            <tr><td>1년 평균</td><td>${stats.avg1y ? stats.avg1y.toFixed(2)+'x' : '—'}</td><td>${ovStats && ovStats.avg1y ? ovStats.avg1y.toFixed(1)+'%' : '—'}</td></tr>
+            <tr><td>2년 평균</td><td>${stats.avg2y ? stats.avg2y.toFixed(2)+'x' : '—'}</td><td>${ovStats && ovStats.avg2y ? ovStats.avg2y.toFixed(1)+'%' : '—'}</td></tr>
+            <tr><td>전체 평균</td><td>${stats.avgAll ? stats.avgAll.toFixed(2)+'x' : '—'}</td><td>${ovStats && ovStats.avgAll ? ovStats.avgAll.toFixed(1)+'%' : '—'}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+// Render hist-diagnosis for Bond Vol tab
+function renderHistDiagVol() {
+  const el = document.getElementById('hist-bondvol');
+  if (!el || fredData.dgs10.values.length < 25) return;
+
+  const fullVol = calcBondVol(fredData.dgs10.values, fredData.dgs10.dates, 20);
+  const validVol = fullVol.filter(x => x !== null);
+  const curVol   = validVol.slice(-1)[0];
+  const volDates = fredData.dgs10.dates.slice(20); // offset for warmup
+  const stats    = buildHistStats(validVol, volDates, curVol);
+  if (!stats) return;
+
+  // Yield stats
+  const yields = fredData.dgs10.values;
+  const curYield = yields.slice(-1)[0];
+  const yStats   = buildHistStats(yields, fredData.dgs10.dates, curYield);
+
+  el.innerHTML = `
+    <div class="hist-diag-header">
+      <span class="hist-diag-title">📊 역사적 위치 진단</span>
+      <span style="font-family:IBM Plex Mono;font-size:11px;color:var(--text3)">${fredData.dgs10.dates[0]} ~ ${fredData.dgs10.dates[fredData.dgs10.dates.length-1]}</span>
+    </div>
+    <div class="hist-diag-body">
+      <div class="hist-diag-left">
+        <div class="pct-bar-wrap">
+          <div class="pct-bar-label">
+            <span class="pct-bar-name">20d Realized Vol (bps)</span>
+            <span class="pct-bar-val" style="color:${pctColor(stats.pct, true)}">${pctLabel(stats.pct)} (높을수록 위험)</span>
+          </div>
+          <div class="pct-bar-track">
+            <div class="pct-bar-fill" style="width:${stats.pct}%;background:${pctColor(stats.pct, true)}"></div>
+            <div class="pct-bar-marker" style="left:80%"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:3px;font-family:IBM Plex Mono;font-size:10px;color:var(--text3)">
+            <span>MIN ${stats.min.toFixed(0)}bps</span><span>P80 = 경계</span><span>MAX ${stats.max.toFixed(0)}bps</span>
+          </div>
+        </div>
+        <div class="pct-bar-wrap" style="margin-top:10px">
+          <div class="pct-bar-label">
+            <span class="pct-bar-name">10Y 금리 수준</span>
+            <span class="pct-bar-val" style="color:var(--text)">${yStats ? pctLabel(yStats.pct) : '—'}</span>
+          </div>
+          <div class="pct-bar-track">
+            <div class="pct-bar-fill" style="width:${yStats ? yStats.pct : 0}%;background:#3090e0"></div>
+            <div class="pct-bar-marker" style="left:50%"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:3px;font-family:IBM Plex Mono;font-size:10px;color:var(--text3)">
+            <span>MIN ${yStats ? yStats.min.toFixed(2)+'%' : '—'}</span><span>MAX ${yStats ? yStats.max.toFixed(2)+'%' : '—'}</span>
+          </div>
+        </div>
+      </div>
+      <div class="hist-diag-right">
+        <table class="hist-table">
+          <thead><tr><th>기간</th><th>평균 Vol(bps)</th><th>평균 금리</th></tr></thead>
+          <tbody>
+            <tr class="current-row"><td>현재</td><td>${curVol.toFixed(1)}</td><td>${curYield.toFixed(2)}%</td></tr>
+            <tr><td>1년 평균</td><td>${stats.avg1y ? stats.avg1y.toFixed(1) : '—'}</td><td>${yStats && yStats.avg1y ? yStats.avg1y.toFixed(2)+'%' : '—'}</td></tr>
+            <tr><td>2년 평균</td><td>${stats.avg2y ? stats.avg2y.toFixed(1) : '—'}</td><td>${yStats && yStats.avg2y ? yStats.avg2y.toFixed(2)+'%' : '—'}</td></tr>
+            <tr><td>5년 평균</td><td>${stats.avg5y ? stats.avg5y.toFixed(1) : '—'}</td><td>${yStats && yStats.avg5y ? yStats.avg5y.toFixed(2)+'%' : '—'}</td></tr>
+            <tr><td>전체 평균</td><td>${stats.avgAll.toFixed(1)}</td><td>${yStats ? yStats.avgAll.toFixed(2)+'%' : '—'}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+// Render hist-diagnosis for Liquidity tab
+function renderHistDiagLiq() {
+  const el = document.getElementById('hist-liquidity');
+  if (!el) return;
+  const res = fredData.reserves, tga = fredData.tga;
+  if (!res.dates || res.dates.length < 5 || !tga.dates || tga.dates.length < 5) return;
+
+  const resMap = {}, tgaMap = {};
+  res.dates.forEach((d,i) => resMap[d] = res.values[i]);
+  tga.dates.forEach((d,i) => tgaMap[d] = tga.values[i]);
+  const allD   = [...new Set([...res.dates, ...tga.dates])].sort();
+  const netV   = allD.map(d => resMap[d] !== undefined && tgaMap[d] !== undefined ? resMap[d] - tgaMap[d] : null);
+  const curNet = netV.filter(x => x !== null).slice(-1)[0];
+  const netStats = buildHistStats(netV, allD, curNet);
+  if (!netStats) return;
+
+  const curRes = res.values.slice(-1)[0];
+  const curTga = tga.values.slice(-1)[0];
+  const resStats = buildHistStats(res.values, res.dates, curRes);
+  const tgaStats = buildHistStats(tga.values, tga.dates, curTga);
+
+  const fmtB = v => v !== null ? v.toFixed(0)+'B$' : '—';
+
+  el.innerHTML = `
+    <div class="hist-diag-header">
+      <span class="hist-diag-title">📊 역사적 위치 진단</span>
+      <span style="font-family:IBM Plex Mono;font-size:11px;color:var(--text3)">${allD[0]} ~ ${allD[allD.length-1]}</span>
+    </div>
+    <div class="hist-diag-body">
+      <div class="hist-diag-left">
+        <div class="pct-bar-wrap">
+          <div class="pct-bar-label">
+            <span class="pct-bar-name">순유동성 (Net Liq) 수준</span>
+            <span class="pct-bar-val" style="color:${pctColor(netStats.pct, false)}">${pctLabel(netStats.pct)} (높을수록 안전)</span>
+          </div>
+          <div class="pct-bar-track">
+            <div class="pct-bar-fill" style="width:${netStats.pct}%;background:${pctColor(netStats.pct, false)}"></div>
+            <div class="pct-bar-marker" style="left:25%"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:3px;font-family:IBM Plex Mono;font-size:10px;color:var(--text3)">
+            <span>MIN ${fmtB(netStats.min)}</span><span>MAX ${fmtB(netStats.max)}</span>
+          </div>
+        </div>
+        <div class="pct-bar-wrap" style="margin-top:10px">
+          <div class="pct-bar-label">
+            <span class="pct-bar-name">준비금 (Reserves) 수준</span>
+            <span class="pct-bar-val" style="color:${resStats ? pctColor(resStats.pct, false) : 'var(--text3)'}">${resStats ? pctLabel(resStats.pct) : '—'}</span>
+          </div>
+          <div class="pct-bar-track">
+            <div class="pct-bar-fill" style="width:${resStats ? resStats.pct : 0}%;background:${resStats ? pctColor(resStats.pct, false) : 'var(--border)'}"></div>
+          </div>
+          <div style="margin-top:3px;font-family:IBM Plex Mono;font-size:10px;color:var(--text3)">현재 ${fmtB(curRes)} · 전체 MIN ${resStats ? fmtB(resStats.min) : '—'} · MAX ${resStats ? fmtB(resStats.max) : '—'}</div>
+        </div>
+      </div>
+      <div class="hist-diag-right">
+        <table class="hist-table">
+          <thead><tr><th>기간</th><th>Net Liq</th><th>Reserves</th><th>TGA</th></tr></thead>
+          <tbody>
+            <tr class="current-row"><td>현재</td><td>${fmtB(curNet)}</td><td>${fmtB(curRes)}</td><td>${fmtB(curTga)}</td></tr>
+            <tr><td>1년 평균</td><td>${fmtB(netStats.avg1y)}</td><td>${resStats ? fmtB(resStats.avg1y) : '—'}</td><td>${tgaStats ? fmtB(tgaStats.avg1y) : '—'}</td></tr>
+            <tr><td>2년 평균</td><td>${fmtB(netStats.avg2y)}</td><td>${resStats ? fmtB(resStats.avg2y) : '—'}</td><td>${tgaStats ? fmtB(tgaStats.avg2y) : '—'}</td></tr>
+            <tr><td>5년 평균</td><td>${fmtB(netStats.avg5y)}</td><td>${resStats ? fmtB(resStats.avg5y) : '—'}</td><td>${tgaStats ? fmtB(tgaStats.avg5y) : '—'}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+// ── Market Stage Diagnosis ──────────────────────────────────────────────
+// 4 Stages based on combined percentile stress score
+function calcMarketStage(sigPcts) {
+  // sigPcts: { np, repo, vol, liq } — each 0-100, where high = high stress
+  // NP: invert (low NP pct = high stress), others: high pct = high stress
+  const valid = Object.values(sigPcts).filter(x => x !== null);
+  if (valid.length === 0) return null;
+  const avgStress = valid.reduce((s,x) => s+x, 0) / valid.length;
+
+  // Stage 1 RECOVERY: avg stress < 30
+  // Stage 2 EXPANSION: avg stress 30–55
+  // Stage 3 THINNING:  avg stress 55–75
+  // Stage 4 DEFENSIVE: avg stress > 75
+  if (avgStress < 30) return { stage:1, name:'RECOVERY', icon:'🟢',
+    desc:'대부분 지표 역사적 평균 이하. 시장 완충 의지 충분.',
+    color:'var(--green)', bg:'rgba(26,168,105,0.08)', stress: avgStress };
+  if (avgStress < 55) return { stage:2, name:'EXPANSION', icon:'🟡',
+    desc:'일부 지표 상승 중. 포지션 유지되나 변화 주시 필요.',
+    color:'var(--yellow2)', bg:'rgba(212,160,23,0.08)', stress: avgStress };
+  if (avgStress < 75) return { stage:3, name:'THINNING', icon:'🟠',
+    desc:'복수 지표 역사적 고점권. 시장 완충 기능 약화 시작.',
+    color:'#f08040', bg:'rgba(240,128,64,0.1)', stress: avgStress };
+  return { stage:4, name:'DEFENSIVE', icon:'🔴',
+    desc:'대부분 지표 극단 수준. 딜러가 위험을 떠안지 않는 방어 구간.',
+    color:'var(--red2)', bg:'rgba(192,48,48,0.12)', stress: avgStress };
+}
+
+function renderStageBanner(sigPcts) {
+  const wrap = document.getElementById('stage-banner-wrap');
+  if (!wrap) return;
+
+  const stage = calcMarketStage(sigPcts);
+  if (!stage) { wrap.innerHTML = ''; return; }
+
+  const stages = [
+    { n:1, name:'RECOVERY', icon:'🟢', desc:'완충 의지 충분', color:'var(--green)', pctRange:'stress < 30' },
+    { n:2, name:'EXPANSION', icon:'🟡', desc:'변화 주시 필요', color:'var(--yellow2)', pctRange:'30–55' },
+    { n:3, name:'THINNING', icon:'🟠', desc:'완충 기능 약화', color:'#f08040', pctRange:'55–75' },
+    { n:4, name:'DEFENSIVE', icon:'🔴', desc:'방어 구간 진입', color:'var(--red2)', pctRange:'stress > 75' },
+  ];
+
+  const items = stages.map(s => `
+    <div class="stage-item ${s.n === stage.stage ? 'active' : ''}" style="${s.n === stage.stage ? 'background:'+stage.bg : ''}">
+      <div class="stage-num">STAGE ${s.n}</div>
+      <div class="stage-name" style="color:${s.color}">${s.icon} ${s.name}</div>
+      <div class="stage-desc">${s.desc}</div>
+      <div class="stage-pct" style="color:${s.color}">${s.n === stage.stage ? '현재 스트레스: ' + stage.stress.toFixed(0) + '%' : s.pctRange}</div>
+    </div>
+  `).join('');
+
+  wrap.innerHTML = `<div class="stage-banner">${items}</div>`;
+}
+
+// Render radar chart for composite tab
+function renderRadarChart(sigPcts) {
+  const id = 'chart-comp-radar';
+  const canvasEl = document.getElementById(id);
+  if (!canvasEl) return;
+  destroyChart(id);
+
+  const labels  = ['NP 포지션', 'Repo 의존도', '국채 변동성', '순유동성'];
+  const rawPcts = [sigPcts.np, sigPcts.repo, sigPcts.vol, sigPcts.liq];
+  const data    = rawPcts.map(v => v === null ? 0 : v);
+  // Historical average line (all at 50)
+  const avgLine = [50, 50, 50, 50];
+
+  const ctx = canvasEl.getContext('2d');
+  chartInstances[id] = new Chart(ctx, {
+    type: 'radar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: '현재 스트레스 퍼센타일',
+          data,
+          borderColor: '#f04040',
+          backgroundColor: 'rgba(240,64,64,0.15)',
+          borderWidth: 2,
+          pointBackgroundColor: data.map(v => v >= 75 ? '#f04040' : v >= 50 ? '#f0c030' : '#26d68a'),
+          pointRadius: 5,
+          pointHoverRadius: 7,
+        },
+        {
+          label: '역사적 평균 (50th %ile)',
+          data: avgLine,
+          borderColor: 'rgba(200,214,229,0.25)',
+          backgroundColor: 'transparent',
+          borderWidth: 1,
+          borderDash: [4,3],
+          pointRadius: 0,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 500 },
+      plugins: {
+        legend: {
+          display: true,
+          labels: { color: '#7a9bb5', font: { family: 'IBM Plex Mono', size: 11 }, boxWidth: 12, padding: 16 }
+        },
+        tooltip: {
+          backgroundColor: '#0d1320',
+          titleColor: '#7a9bb5',
+          bodyColor: '#c8d6e5',
+          borderColor: '#1e2d45',
+          borderWidth: 1,
+          callbacks: {
+            label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.r.toFixed(0)}번째 %ile`
+          }
+        }
+      },
+      scales: {
+        r: {
+          min: 0, max: 100,
+          angleLines:     { color: 'rgba(30,45,69,0.6)' },
+          grid:           { color: 'rgba(30,45,69,0.6)' },
+          pointLabels:    { color: '#c8d6e5', font: { family: 'IBM Plex Mono', size: 11 } },
+          ticks: {
+            display: true,
+            stepSize: 25,
+            color: '#4a6580',
+            font: { family: 'IBM Plex Mono', size: 10 },
+            callback: v => v + '%',
+            backdropColor: 'transparent',
+          },
+        }
+      }
+    }
+  });
+}
+
+// ─────────────────────────────────────────────
+// TAB SWITCHING
+// ─────────────────────────────────────────────
+const NP_TABS = new Set(['total','bills','coupons','frn','tips']);
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    activeTab = btn.dataset.tab;
+    document.getElementById(`panel-${activeTab}`).classList.add('active');
+    // Show global NP criteria only for NP tabs
+    const gc = document.getElementById('global-criteria');
+    if (gc) gc.style.display = NP_TABS.has(activeTab) ? '' : 'none';
+  });
+});
+// Initial state: hide if non-NP tab is active on load
+(function() {
+  const gc = document.getElementById('global-criteria');
+  if (gc && !NP_TABS.has(activeTab)) gc.style.display = 'none';
+})();
+
+// ─────────────────────────────────────────────
+// RANGE SWITCHING
+// ─────────────────────────────────────────────
+document.querySelectorAll('.range-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeRange = parseInt(btn.dataset.range);
+    renderAll();
+  });
+});
+</script>
+
+<script>
+(function() {
+  const CORRECT = '2385547';
+  const overlay   = document.getElementById('lockOverlay');
+  const input     = document.getElementById('lockPwInput');
+  const btn       = document.getElementById('lockUnlockBtn');
+  const errMsg    = document.getElementById('lockErrMsg');
+  const toggleBtn = document.getElementById('lockTogglePw');
+
+  // Focus input on load
+  window.addEventListener('DOMContentLoaded', function() { input.focus(); });
+
+  toggleBtn.addEventListener('click', function() {
+    input.type = input.type === 'password' ? 'text' : 'password';
+    toggleBtn.textContent = input.type === 'password' ? '\u{1F441}' : '\u{1F648}';
+  });
+
+  function tryUnlock() {
+    if (input.value === CORRECT) {
+      overlay.classList.add('fade-out');
+      setTimeout(function() { overlay.remove(); }, 420);
+    } else {
+      input.classList.add('pw-error');
+      errMsg.classList.add('show');
+      setTimeout(function() { input.classList.remove('pw-error'); }, 400);
+      input.value = '';
+      input.focus();
+    }
+  }
+
+  btn.addEventListener('click', tryUnlock);
+  input.addEventListener('keydown', function(e) { if (e.key === 'Enter') tryUnlock(); });
+})();
+</script>
+
+</body>
+</html>
